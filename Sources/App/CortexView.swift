@@ -18,8 +18,8 @@ struct CortexView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 header
-                if let input = store.selectedInput, case .grid(let g) = input.payload {
-                    currentInputStrip(grid: g)
+                if let input = store.selectedInput {
+                    currentInputStrip(input: input)
                 }
                 cortex
                 legend
@@ -50,6 +50,7 @@ struct CortexView: View {
             }
             HStack(spacing: 10) {
                 Button("Demo Net") { store.useDemoNet() }
+                Button("Text Model") { store.useDenseTextModel() }
                 #if os(macOS) || os(iOS)
                 Button("Load Core ML…") { showingImporter = true }
                 #endif
@@ -63,14 +64,21 @@ struct CortexView: View {
         }
     }
 
-    private func currentInputStrip(grid: [[Double]]) -> some View {
+    @ViewBuilder
+    private func currentInputStrip(input: CartographyInput) -> some View {
         HStack(spacing: 14) {
-            GridThumbnail(grid: grid).frame(width: 72, height: 72)
+            if case .grid(let g) = input.payload {
+                GridThumbnail(grid: g).frame(width: 72, height: 72)
+            }
             VStack(alignment: .leading, spacing: 4) {
                 Text("Current input").font(.caption).foregroundStyle(.secondary)
+                if let text = input.display {
+                    Text("“\(text)”").font(.callout).italic()
+                }
                 if let trace = store.currentTrace {
                     Text(trace.predicted).font(.title3.bold()).foregroundStyle(Theme.signal)
-                    Text("cells brighten with activation for this input")
+                    Text(store.canSteer ? "cells are SAE features; brightness = activation"
+                                        : "cells brighten with activation for this input")
                         .font(.caption2).foregroundStyle(.secondary)
                 } else {
                     Text("—").font(.title3)

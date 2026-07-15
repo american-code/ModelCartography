@@ -18,6 +18,8 @@ public struct CartographyInput: Identifiable, Hashable, Sendable {
     public let id: String
     /// Ground-truth label, when known (used by the verification harness).
     public let truth: String?
+    /// Human-readable form, e.g. the sentence behind a bag-of-words vector.
+    public let display: String?
     public let payload: Payload
 
     public enum Payload: Hashable, Sendable {
@@ -26,11 +28,14 @@ public struct CartographyInput: Identifiable, Hashable, Sendable {
         case grid([[Double]])
     }
 
-    public init(id: String, truth: String? = nil, payload: Payload) {
+    public init(id: String, truth: String? = nil, display: String? = nil, payload: Payload) {
         self.id = id
         self.truth = truth
+        self.display = display
         self.payload = payload
     }
+
+    public var isGrid: Bool { if case .grid = payload { return true }; return false }
 
     /// Flattened numeric view, regardless of payload shape.
     public var flattened: [Double] {
@@ -55,6 +60,7 @@ public enum RegionKind: String, Codable, Sendable, CaseIterable {
     case channel     // conv channel / filter
     case expert      // MoE expert sub-network
     case head        // attention head
+    case feature     // an interpretable SAE direction (Map B surfaced as a region)
     case logit       // an output class
     case inputPatch  // a region of the input (receptive field)
 }
@@ -145,6 +151,42 @@ public struct SaliencyMap: Sendable {
         self.rows = rows
         self.cols = cols
         self.values = values
+    }
+}
+
+// MARK: - Logit lens & attribution (Phase 2)
+
+/// The model's running prediction decoded at one layer of the residual stream.
+/// Watching these sharpen with depth is the logit-lens view of "input becoming output".
+public struct LayerReadout: Sendable {
+    public let layerIndex: Int
+    public let name: String
+    public let probabilities: [String: Double]
+    public let top: String
+    public init(layerIndex: Int, name: String, probabilities: [String: Double], top: String) {
+        self.layerIndex = layerIndex
+        self.name = name
+        self.probabilities = probabilities
+        self.top = top
+    }
+}
+
+/// First-order account of how one input became one output: which features contributed,
+/// and by how much, to the predicted class.
+public struct AttributionGraph: Sendable {
+    public struct Contribution: Sendable, Identifiable {
+        public let id: String        // feature/region id
+        public let label: String
+        public let value: Double     // signed contribution to the predicted logit
+        public init(id: String, label: String, value: Double) {
+            self.id = id; self.label = label; self.value = value
+        }
+    }
+    public let predicted: String
+    public let contributions: [Contribution]   // ranked, largest magnitude first
+    public init(predicted: String, contributions: [Contribution]) {
+        self.predicted = predicted
+        self.contributions = contributions
     }
 }
 

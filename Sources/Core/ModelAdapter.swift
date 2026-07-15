@@ -28,6 +28,10 @@ public struct Capabilities: OptionSet, Sendable {
     public static let routingPath         = Capabilities(rawValue: 1 << 5)
     /// Can be re-run over a corpus to verify an intervention.
     public static let verification        = Capabilities(rawValue: 1 << 6)
+    /// Can decode the running prediction at each layer (logit lens).
+    public static let logitLens           = Capabilities(rawValue: 1 << 7)
+    /// Can attribute an output back to contributing features.
+    public static let attribution         = Capabilities(rawValue: 1 << 8)
 }
 
 /// A model, normalized into the cartography vocabulary.
@@ -55,6 +59,15 @@ public protocol ModelAdapter: AnyObject {
 
     /// Return a copy of this model with the given regions removed. Only when `.ablation`.
     func ablated(regionIDs: Set<String>) throws -> ModelAdapter
+
+    /// Return a copy that adds `gain` × the feature's direction at inference. Only when `.steering`.
+    func steered(featureID: String, gain: Double) throws -> ModelAdapter
+
+    /// The running prediction decoded at each layer. Only when `.logitLens`.
+    func logitLens(_ input: CartographyInput) throws -> [LayerReadout]
+
+    /// How this input's output decomposes over features. Only when `.attribution`.
+    func attributionGraph(_ input: CartographyInput) throws -> AttributionGraph
 }
 
 // Sensible defaults so a minimal adapter only implements what it truly supports.
@@ -66,6 +79,15 @@ public extension ModelAdapter {
     }
     func ablated(regionIDs: Set<String>) throws -> ModelAdapter {
         throw CartographyError.unsupported("ablation")
+    }
+    func steered(featureID: String, gain: Double) throws -> ModelAdapter {
+        throw CartographyError.unsupported("steering")
+    }
+    func logitLens(_ input: CartographyInput) throws -> [LayerReadout] {
+        throw CartographyError.unsupported("logit lens")
+    }
+    func attributionGraph(_ input: CartographyInput) throws -> AttributionGraph {
+        throw CartographyError.unsupported("attribution")
     }
 
     /// Convenience: regions grouped into cortex columns by depth.

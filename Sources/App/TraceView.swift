@@ -1,8 +1,8 @@
 //
 //  TraceView.swift
 //  Stages 1–2 & 4 for a single input: pick something, watch it flow input -> output.
-//  Shows the prediction, per-class probabilities, the realized pathway, and (when the
-//  adapter supports it) a saliency map over the input.
+//  Prediction + per-class probabilities + realized pathway, plus (when supported)
+//  saliency (image models) and the logit lens + attribution graph (dense models).
 //
 
 import SwiftUI
@@ -15,16 +15,18 @@ struct TraceView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 Text("Trace").font(.largeTitle.bold())
-                Text("Pick an input; follow it from pixels to prediction.")
+                Text("Pick an input; follow it from input to prediction.")
                     .foregroundStyle(.secondary)
 
                 inputPicker
 
-                if let input = store.selectedInput, case .grid(let g) = input.payload {
+                if let input = store.selectedInput {
                     HStack(alignment: .top, spacing: 18) {
-                        selectedInputCard(input: input, grid: g)
+                        selectedInputCard(input: input)
                         predictionCard(input: input)
                     }
+                    if store.hasLens { lensCard }
+                    if store.hasAttribution, let g = store.currentAttribution { attributionCard(g) }
                     pathwayCard
                 }
             }
@@ -34,40 +36,54 @@ struct TraceView: View {
         }
     }
 
+    // MARK: Input picker (grid thumbnails or text chips)
+
     private var inputPicker: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 12) {
                 ForEach(store.corpus) { input in
-                    if case .grid(let g) = input.payload {
-                        Button {
-                            store.select(input)
-                        } label: {
-                            GridThumbnail(grid: g)
-                                .frame(width: 54, height: 54)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .stroke(store.selectedInput?.id == input.id ? Theme.signal : .clear,
-                                                lineWidth: 3)
-                                )
-                        }
+                    Button { store.select(input) } label: { pickerLabel(input) }
                         .buttonStyle(.plain)
-                    }
                 }
             }
             .padding(.vertical, 4)
         }
     }
 
-    private func selectedInputCard(input: CartographyInput, grid: [[Double]]) -> some View {
+    @ViewBuilder
+    private func pickerLabel(_ input: CartographyInput) -> some View {
+        let selected = store.selectedInput?.id == input.id
+        if case .grid(let g) = input.payload {
+            GridThumbnail(grid: g)
+                .frame(width: 54, height: 54)
+                .overlay(RoundedRectangle(cornerRadius: 8)
+                    .stroke(selected ? Theme.signal : .clear, lineWidth: 3))
+        } else {
+            Text(input.display ?? input.id)
+                .font(.caption).lineLimit(1)
+                .padding(.horizontal, 12).padding(.vertical, 10)
+                .background(selected ? Theme.signal.opacity(0.18) : Color.primary.opacity(0.06),
+                            in: RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8)
+                    .stroke(selected ? Theme.signal : .clear, lineWidth: 2))
+        }
+    }
+
+    // MARK: Selected input
+
+    @ViewBuilder
+    private func selectedInputCard(input: CartographyInput) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Input").font(.headline)
-            GridThumbnail(grid: grid, saliency: showSaliency ? store.currentSaliency : nil)
-                .frame(width: 180, height: 180)
-            if store.canSaliency {
-                Toggle("Saliency overlay", isOn: $showSaliency)
-                    .font(.caption)
-            } else {
-                Text("Saliency not available for this model").font(.caption2).foregroundStyle(.secondary)
+            if case .grid(let g) = input.payload {
+                GridThumbnail(grid: g, saliency: showSaliency ? store.currentSaliency : nil)
+                    .frame(width: 180, height: 180)
+                if store.canSaliency {
+                    Toggle("Saliency overlay", isOn: $showSaliency).font(.caption)
+                }
+            } else if let text = input.display {
+                Text("“\(text)”").font(.title3).italic()
+                    .fixedSize(horizontal: false, vertical: true)
             }
             if let truth = input.truth {
                 Text("labeled: \(truth)").font(.caption).foregroundStyle(.secondary)
@@ -97,6 +113,58 @@ struct TraceView: View {
                 }
             } else {
                 Text("Select an input").foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card()
+    }
+
+    // MARK: Logit lens
+
+    private var lensCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Logit lens").font(.headline)
+            Text("the model's running guess decoded at each layer — watch it sharpen with depth")
+                .font(.caption2).foregroundStyle(.secondary)
+            ForEach(store.currentLens, id: \.layerIndex) { readout in
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text(readout.name).font(.caption.monospaced())
+                        Spacer()
+                        Text("→ \(readout.top)").font(.caption.bold()).foregroundStyle(Theme.signal)
+                    }
+                    HStack(spacing: 4) {
+                        ForEach(store.adapter.classLabels, id: \.self) { label in
+                            let p = readout.probabilities[label] ?? 0
+                            Capsule()
+                                .fill(label == readout.top ? Theme.signal : Color.primary.opacity(0.12))
+                                .frame(height: 6)
+                                .frame(maxWidth: .infinity)
+                                .opacity(0.35 + 0.65 * p)
+                        }
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card()
+    }
+
+    // MARK: Attribution graph
+
+    private func attributionCard(_ graph: AttributionGraph) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Attribution").font(.headline)
+            Text("which features pushed the output toward “\(graph.predicted)”")
+                .font(.caption2).foregroundStyle(.secondary)
+            let maxMag = graph.contributions.map { abs($0.value) }.max() ?? 1
+            ForEach(graph.contributions) { c in
+                ValueBar(label: c.id,
+                         value: abs(c.value) / maxMag,
+                         display: String(format: "%+.2f", c.value),
+                         tint: c.value >= 0 ? Theme.signal : Theme.critical)
+                Text(c.label).font(.caption2).foregroundStyle(.secondary)
+                    .padding(.leading, 100).padding(.top, -4)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

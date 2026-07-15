@@ -5,10 +5,11 @@ inference from input to output, and surgically target what to keep, cut, or repl
 
 One SwiftUI codebase, three platforms: **macOS · iPadOS · tvOS**.
 
-This repository is **Phase 1** of the design in the accompanying design note: the full
-five-stage pipeline (Instrument → Capture → Attribute → Map → Intervene) running on the
-smallest real model, built around an abstraction that later scales up to dense LLMs and
-Mixture-of-Experts models without a rewrite.
+This repository covers **Phase 1 and Phase 2** of the design in the accompanying design
+note: the full five-stage pipeline (Instrument → Capture → Attribute → Map → Intervene),
+plus Map B (interpretable features), logit lens, attribution, and steering — all behind one
+adapter interface that scales from a Core ML classifier to a dense residual model without a
+rewrite.
 
 ---
 
@@ -26,8 +27,9 @@ and the optimizer once; add a new architecture by writing one adapter.
 |---|---|---|
 | Normalized vocabulary | `Sources/Core/CartographyTypes.swift` | Region, Edge, Trace, Feature, SaliencyMap |
 | The one interface | `Sources/Core/ModelAdapter.swift` | protocol + `Capabilities` option set |
-| Reference adapter | `Sources/Adapters/MockNetwork/` | a real MLP trained in pure Swift — **fully** introspectable |
+| Reference adapter (Phase 1) | `Sources/Adapters/MockNetwork/` | a real MLP trained in pure Swift — **fully** introspectable |
 | Honest-degradation adapter | `Sources/Adapters/CoreML/CoreMLAdapter.swift` | wraps a Core ML classifier; occlusion saliency; **no** internal ablation |
+| Dense adapter (Phase 2) | `Sources/Adapters/DenseText/` | residual model + sparse autoencoder → features, logit lens, attribution, steering |
 | Attribution | `Sources/Pipeline/Attribution.swift` | labels each region with the class it prefers |
 | Verification | `Sources/Pipeline/Verification.swift` | ablate → re-verify on held-out data + collateral detection |
 | UI | `Sources/App/` | Cortex map · Trace view · Intervene panel |
@@ -79,11 +81,30 @@ while the harness flags `horizontal` as collateral damage.
 3. **Intervene** — quick-mark a whole domain (or hand-pick neurons), then **Ablate & Re-verify**.
    The result diffs before/after accuracy per class and flags any good class you damaged.
 
-## Not yet here — Phase 2
+## Phase 2 — the dense model (`Sources/Adapters/DenseText/`)
 
-- A dense-LLM adapter (logit lens, attribution graphs).
-- **Map B**: sparse-autoencoder features + auto-labeling — the human-legible "domains".
-- Steering vectors.
+A small **dense residual classifier** over a synthetic topic corpus (weather / finance / food),
+trained on-device in pure Swift. Because a real 7B LLM can't run in a VM — or on a TV — this
+model is the stand-in that makes each Phase 2 *technique* real and inspectable:
 
-The `Feature` type and `.semanticFeatures` capability are already defined so Phase 2 slots in
-behind the same interface.
+- **Map B — features.** A **sparse autoencoder** trains on the model's residual stream and
+  recovers an overcomplete dictionary of directions. Each feature is **auto-labeled** by the
+  inputs that most activate it (e.g. `finance: invest, stock`). For a dense model these
+  features *are* the cortex — the meaningful domains live in activation space, not in raw
+  neurons.
+- **Logit lens.** The classifier head is applied to every residual point, so you watch the
+  running prediction sharpen with depth (e.g. `P(finance)` 30% → 84% → 100%).
+- **Attribution graph.** The predicted logit is decomposed over features via
+  `feature_activation × (head · feature_direction)` — a first-order account of how this input
+  became this output.
+- **Steering.** Adding `gain × feature_direction` to the residual at inference pushes behavior
+  without retraining — enough to flip a *food* sentence to *finance*.
+
+All four appear in the UI: features in the **Cortex** and **Trace** tabs, the logit lens and
+attribution in **Trace**, and steering in **Intervene** (which swaps its ablation controls for
+steering controls based on the adapter's declared `capabilities`).
+
+### Not yet here — Phase 3
+
+The MoE adapter (wrap Colibrì's routing logs as a native, labeled expert cortex) and a unified
+verification harness across all adapters.

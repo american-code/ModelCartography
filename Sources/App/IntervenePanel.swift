@@ -14,18 +14,134 @@ struct IntervenePanel: View {
             VStack(alignment: .leading, spacing: 18) {
                 Text("Intervene").font(.largeTitle.bold())
 
-                if !store.canAblate {
-                    unsupportedCard
-                } else {
+                if store.canSteer {
+                    steeringIntro
+                    steeringPicker
+                    steeringControls
+                    if let base = store.steerBase, let after = store.steerResult {
+                        steeringResult(base: base, after: after)
+                    }
+                } else if store.canAblate {
                     baselineCard
                     selectionCard
                     if let d = store.diff { resultCard(d) }
+                } else {
+                    unsupportedCard
                 }
             }
             .padding(20)
             .frame(maxWidth: 760, alignment: .leading)
             .frame(maxWidth: .infinity)
         }
+    }
+
+    // MARK: Steering (Phase 2)
+
+    private var steeringIntro: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Steering").font(.headline)
+            Text("""
+            Add a feature's direction to the residual stream at inference to push behavior — \
+            replacing retraining. Pick a feature, set the gain, and apply it to the input \
+            currently selected on the Trace tab.
+            """)
+            .font(.callout).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card()
+    }
+
+    private var steeringPicker: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Feature").font(.subheadline.bold())
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(store.featureRegions) { region in
+                        Button { store.selectFeature(region.id) } label: {
+                            Text(region.label ?? region.id)
+                                .font(.caption)
+                                .padding(.horizontal, 10).padding(.vertical, 7)
+                                .background(store.steerFeatureID == region.id
+                                            ? Theme.trace.opacity(0.22) : Color.primary.opacity(0.06),
+                                            in: Capsule())
+                                .overlay(Capsule().stroke(
+                                    store.steerFeatureID == region.id ? Theme.trace : .clear, lineWidth: 2))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card()
+    }
+
+    private var steeringControls: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Gain").font(.subheadline.bold())
+                Spacer()
+                Text(String(format: "×%.1f", store.steerGain))
+                    .font(.callout.monospacedDigit()).foregroundStyle(Theme.trace)
+            }
+            HStack(spacing: 12) {
+                Button { store.steerGain = max(-8, store.steerGain - 1) } label: {
+                    Image(systemName: "minus")
+                }
+                #if os(tvOS)
+                // Slider is unavailable on tvOS — show the value as a track the steppers drive.
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color.primary.opacity(0.10))
+                        Capsule().fill(Theme.trace)
+                            .frame(width: geo.size.width * CGFloat((store.steerGain + 8) / 16))
+                    }
+                }
+                .frame(height: 10)
+                #else
+                Slider(value: $store.steerGain, in: -8...8, step: 0.5)
+                    .tint(Theme.trace)
+                #endif
+                Button { store.steerGain = min(8, store.steerGain + 1) } label: {
+                    Image(systemName: "plus")
+                }
+            }
+            .buttonStyle(.bordered)
+
+            HStack(spacing: 12) {
+                Button {
+                    store.applySteering()
+                } label: {
+                    Label("Apply steering", systemImage: "dial.high")
+                }
+                .buttonStyle(.borderedProminent).tint(Theme.trace)
+                .disabled(store.steerFeatureID == nil || store.selectedInput == nil)
+            }
+            if store.selectedInput == nil {
+                Text("Select an input on the Trace tab first.").font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card()
+    }
+
+    private func steeringResult(base: [String: Double], after: [String: Double]) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Output shift").font(.headline)
+            ForEach(store.adapter.classLabels, id: \.self) { cls in
+                let b = base[cls] ?? 0, a = after[cls] ?? 0
+                VStack(spacing: 3) {
+                    ValueBar(label: cls, value: b, display: String(format: "%.0f%%", b * 100),
+                             tint: Theme.muted)
+                    ValueBar(label: "", value: a, display: String(format: "%.0f%%", a * 100),
+                             tint: a >= b ? Theme.signal : Theme.critical, emphasized: true)
+                }
+            }
+            Text("top row = before · bottom row = after steering")
+                .font(.caption2).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card()
     }
 
     private var unsupportedCard: some View {
