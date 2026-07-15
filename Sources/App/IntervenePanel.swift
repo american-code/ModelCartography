@@ -23,6 +23,7 @@ struct IntervenePanel: View {
                     }
                 } else if store.canAblate {
                     baselineCard
+                    if store.hasExperts { utilizationCard }
                     selectionCard
                     if let d = store.diff { resultCard(d) }
                 } else {
@@ -155,6 +156,32 @@ struct IntervenePanel: View {
             ablate → re-verify loop.
             """)
             .font(.callout).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card()
+    }
+
+    // MARK: Expert utilization (Phase 3 — the prune/pin signal)
+
+    private var utilizationCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Expert utilization").font(.headline)
+            Text("how much the router uses each expert across the corpus — cold experts are safe to prune")
+                .font(.caption2).foregroundStyle(.secondary)
+            let maxU = store.expertsByUtilization.map { $0.util }.max() ?? 1
+            ForEach(store.expertsByUtilization, id: \.region.id) { item in
+                let cold = item.util < 0.05
+                ValueBar(label: "\(item.region.id) · \(item.region.label ?? "?")",
+                         value: maxU > 0 ? item.util / maxU : 0,
+                         display: String(format: "%.0f%%", item.util * 100),
+                         tint: cold ? Theme.critical : Theme.signal,
+                         emphasized: cold)
+            }
+            Button { store.markColdExperts() } label: {
+                Label("Mark cold experts", systemImage: "thermometer.snowflake")
+            }
+            .buttonStyle(.bordered)
+            .padding(.top, 2)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .card()

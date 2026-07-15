@@ -5,11 +5,11 @@ inference from input to output, and surgically target what to keep, cut, or repl
 
 One SwiftUI codebase, three platforms: **macOS · iPadOS · tvOS**.
 
-This repository covers **Phase 1 and Phase 2** of the design in the accompanying design
-note: the full five-stage pipeline (Instrument → Capture → Attribute → Map → Intervene),
-plus Map B (interpretable features), logit lens, attribution, and steering — all behind one
-adapter interface that scales from a Core ML classifier to a dense residual model without a
-rewrite.
+This repository covers **Phases 1–3** of the design in the accompanying design note: the full
+five-stage pipeline (Instrument → Capture → Attribute → Map → Intervene), plus Map B
+(interpretable features), logit lens, attribution, steering, and a native Mixture-of-Experts
+model with router-driven expert pruning — all behind one adapter interface that scales from a
+Core ML classifier to a dense residual model to an MoE without a rewrite.
 
 ---
 
@@ -30,6 +30,7 @@ and the optimizer once; add a new architecture by writing one adapter.
 | Reference adapter (Phase 1) | `Sources/Adapters/MockNetwork/` | a real MLP trained in pure Swift — **fully** introspectable |
 | Honest-degradation adapter | `Sources/Adapters/CoreML/CoreMLAdapter.swift` | wraps a Core ML classifier; occlusion saliency; **no** internal ablation |
 | Dense adapter (Phase 2) | `Sources/Adapters/DenseText/` | residual model + sparse autoencoder → features, logit lens, attribution, steering |
+| MoE adapter (Phase 3) | `Sources/Adapters/MoE/` | our own router + experts → routing cortex, expert attribution, utilization pruning |
 | Attribution | `Sources/Pipeline/Attribution.swift` | labels each region with the class it prefers |
 | Verification | `Sources/Pipeline/Verification.swift` | ablate → re-verify on held-out data + collateral detection |
 | UI | `Sources/App/` | Cortex map · Trace view · Intervene panel |
@@ -104,7 +105,28 @@ All four appear in the UI: features in the **Cortex** and **Trace** tabs, the lo
 attribution in **Trace**, and steering in **Intervene** (which swaps its ablation controls for
 steering controls based on the adapter's declared `capabilities`).
 
-### Not yet here — Phase 3
+## Phase 3 — Mixture-of-Experts (`Sources/Adapters/MoE/`)
 
-The MoE adapter (wrap Colibrì's routing logs as a native, labeled expert cortex) and a unified
-verification harness across all adapters.
+Colibrì's *method*, as **our own model** — not a wrapper around their engine. A small MoE
+classifier built end-to-end in Swift: each layer has a **router** that scores every expert for
+the current input and a set of independent **expert** sub-networks, mixed by gate weight and
+added as a residual. Trained with dense (soft) gating so it's differentiable; sparsity and
+routing are read off the learned gates.
+
+This is where "route the input to the right sub-network" is *literally the architecture*:
+
+- **Routing is the cortex.** Regions are experts; a cell's brightness is the router gate for
+  the current input; the top expert per layer is the realized **pathway**
+  (`L0.E4 → L1.E0 → finance`).
+- **Annotated brain.** Attribution over the corpus labels each expert with the domain that
+  routes to it — the labeled cortex the design promised, versus Colibrì's unlabeled heatmap.
+- **Utilization → pruning.** The Intervene tab ranks experts by how much the router uses them
+  and offers **Mark cold experts**; pruning them and re-verifying shows near-zero damage, while
+  pruning the hot *finance* experts collapses that class (−100%) and flags the collateral. That
+  is expert pruning / pinning — optimization by usage.
+- Plus the shared machinery: logit lens across MoE layers and per-expert attribution.
+
+### Not yet here
+
+A unified cross-adapter verification harness and, eventually, importing routing logs from a real
+external MoE engine as one more adapter.

@@ -51,6 +51,7 @@ struct CortexView: View {
             HStack(spacing: 10) {
                 Button("Demo Net") { store.useDemoNet() }
                 Button("Text Model") { store.useDenseTextModel() }
+                Button("MoE Model") { store.useMoEModel() }
                 #if os(macOS) || os(iOS)
                 Button("Load Core ML…") { showingImporter = true }
                 #endif
@@ -77,9 +78,7 @@ struct CortexView: View {
                 }
                 if let trace = store.currentTrace {
                     Text(trace.predicted).font(.title3.bold()).foregroundStyle(Theme.signal)
-                    Text(store.canSteer ? "cells are SAE features; brightness = activation"
-                                        : "cells brighten with activation for this input")
-                        .font(.caption2).foregroundStyle(.secondary)
+                    Text(cortexHint).font(.caption2).foregroundStyle(.secondary)
                 } else {
                     Text("—").font(.title3)
                 }
@@ -87,6 +86,12 @@ struct CortexView: View {
             Spacer()
         }
         .card()
+    }
+
+    private var cortexHint: String {
+        if store.canSteer { return "cells are SAE features; brightness = activation" }
+        if store.hasExperts { return "cells are experts; brightness = router gate for this input" }
+        return "cells brighten with activation for this input"
     }
 
     private var cortex: some View {

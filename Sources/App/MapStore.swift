@@ -44,6 +44,9 @@ final class MapStore {
     private(set) var steerBase: [String: Double]?
     private(set) var steerResult: [String: Double]?
 
+    // Expert utilization (Phase 3): mean router gate per expert over the corpus.
+    private(set) var expertUtil: [String: Double] = [:]
+
     private let gridSide = PatternDataset.side
 
     init() {
@@ -82,6 +85,7 @@ final class MapStore {
         diff = nil
         steerFeatureID = regs.first { $0.kind == .feature }?.id
         steerBase = nil; steerResult = nil
+        computeExpertUtilization()
         select(corpus.first)
         status = "Loaded \(adapter.name) · \(regions.count) regions · \(capabilitySummary)"
     }
@@ -105,6 +109,37 @@ final class MapStore {
     var hasLens: Bool { adapter.capabilities.contains(.logitLens) }
     var hasAttribution: Bool { adapter.capabilities.contains(.attribution) }
     var featureRegions: [Region] { regions.filter { $0.kind == .feature } }
+    var hasExperts: Bool { regions.contains { $0.kind == .expert } }
+
+    /// Experts ranked by how much the router uses them across the corpus (hot → cold).
+    var expertsByUtilization: [(region: Region, util: Double)] {
+        regions.filter { $0.kind == .expert }
+            .map { ($0, expertUtil[$0.id] ?? 0) }
+            .sorted { $0.1 > $1.1 }
+    }
+
+    private func computeExpertUtilization() {
+        expertUtil = [:]
+        let experts = regions.filter { $0.kind == .expert }
+        guard !experts.isEmpty, !corpus.isEmpty else { return }
+        var sum: [String: Double] = [:]
+        for input in corpus {
+            guard let tr = try? adapter.forward(input) else { continue }
+            for e in experts { sum[e.id, default: 0] += tr.activations[e.id] ?? 0 }
+        }
+        for e in experts { expertUtil[e.id] = (sum[e.id] ?? 0) / Double(corpus.count) }
+    }
+
+    /// Mark every expert the router barely uses — safe pruning candidates.
+    func markColdExperts(threshold: Double = 0.05) {
+        let cold = expertsByUtilization.filter { $0.util < threshold }.map { $0.region.id }
+        if cold.isEmpty {
+            status = "No cold experts below \(Int(threshold * 100))% utilization — this MoE is well-packed."
+        } else {
+            selectedRegionIDs.formUnion(cold)
+            status = "Marked \(cold.count) cold expert(s) for pruning."
+        }
+    }
 
     // MARK: Stage 1–2: capture on selection
 
@@ -245,6 +280,12 @@ final class MapStore {
     func useDenseTextModel() {
         setTextCorpora()
         adapter = DenseModelAdapter.make()
+        refreshForNewAdapter()
+    }
+
+    func useMoEModel() {
+        setTextCorpora()
+        adapter = MoEAdapter.make()
         refreshForNewAdapter()
     }
 
