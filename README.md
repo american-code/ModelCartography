@@ -33,7 +33,7 @@ and the optimizer once; add a new architecture by writing one adapter.
 | MoE adapter (Phase 3) | `Sources/Adapters/MoE/` | our own router + experts → routing cortex, expert attribution, utilization pruning |
 | Attribution | `Sources/Pipeline/Attribution.swift` | labels each region with the class it prefers |
 | Verification | `Sources/Pipeline/Verification.swift` | ablate → re-verify on held-out data + collateral detection |
-| UI | `Sources/App/` | Cortex map · Trace view · Intervene panel |
+| UI | `Sources/App/` | Cortex map · Trace view · Intervene panel · Verify (health + confusion) |
 
 ### Two adapters, on purpose
 
@@ -126,7 +126,15 @@ This is where "route the input to the right sub-network" is *literally the archi
   is expert pruning / pinning — optimization by usage.
 - Plus the shared machinery: logit lens across MoE layers and per-expert attribution.
 
+## Unified verification (`Verify` tab)
+
+One held-out check every classifier adapter reports the same way, regardless of architecture:
+overall + per-class accuracy, and a **confusion matrix** showing exactly which classes the model
+mixes up (rows = actual, columns = predicted, diagonal = correct). Paired with the per-intervention
+before/after diff on the Intervene tab, this is the closed loop that makes removing "unuseful"
+regions measurable rather than reckless.
+
 ### Not yet here
 
-A unified cross-adapter verification harness and, eventually, importing routing logs from a real
-external MoE engine as one more adapter.
+Importing routing logs from a real external MoE engine as one more adapter — the interface is
+ready for it; only a log-parsing adapter is missing.

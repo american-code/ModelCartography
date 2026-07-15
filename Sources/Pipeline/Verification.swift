@@ -26,6 +26,18 @@ public struct DiffReport: Sendable {
     public var accuracyDelta: Double { modified.overallAccuracy - base.overallAccuracy }
 }
 
+/// Truth × predicted counts over a corpus — a universal diagnostic that works for any
+/// classifier adapter and shows *where* the model confuses classes, not just how often.
+public struct ConfusionMatrix: Sendable {
+    public let labels: [String]
+    public let counts: [[Int]]          // counts[truth][pred]
+    public let total: Int
+
+    public func rowTotal(_ truth: Int) -> Int { counts[truth].reduce(0, +) }
+    public var correct: Int { labels.indices.reduce(0) { $0 + counts[$1][$1] } }
+    public var accuracy: Double { total > 0 ? Double(correct) / Double(total) : 0 }
+}
+
 public enum Verification {
     /// Fraction correct, overall and per class.
     public static func evaluate(adapter: ModelAdapter,
@@ -51,6 +63,21 @@ public enum Verification {
         }
         return VerificationReport(overallAccuracy: total > 0 ? Double(correct) / Double(total) : 0,
                                   perClass: perClass, count: total)
+    }
+
+    /// Build the truth × predicted matrix over a corpus.
+    public static func confusion(adapter: ModelAdapter, corpus: [CartographyInput],
+                                 labels: [String]) -> ConfusionMatrix {
+        let index = Dictionary(uniqueKeysWithValues: labels.enumerated().map { ($1, $0) })
+        var counts = Array(repeating: Array(repeating: 0, count: labels.count), count: labels.count)
+        var total = 0
+        for input in corpus {
+            guard let truth = input.truth, let ti = index[truth],
+                  let trace = try? adapter.forward(input), let pi = index[trace.predicted] else { continue }
+            counts[ti][pi] += 1
+            total += 1
+        }
+        return ConfusionMatrix(labels: labels, counts: counts, total: total)
     }
 
     /// Ablate the given regions, re-evaluate, and diff.

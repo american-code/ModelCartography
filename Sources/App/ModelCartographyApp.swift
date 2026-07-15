@@ -30,6 +30,8 @@ struct RootView: View {
                 .tabItem { Label("Trace", systemImage: "arrow.triangle.branch") }
             IntervenePanel(store: store)
                 .tabItem { Label("Intervene", systemImage: "scissors") }
+            VerifyView(store: store)
+                .tabItem { Label("Verify", systemImage: "checkmark.seal") }
         }
     }
 }

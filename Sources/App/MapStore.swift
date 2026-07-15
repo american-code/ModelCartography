@@ -24,6 +24,7 @@ final class MapStore {
 
     private(set) var labeling = Attribution.Labeling(labels: [:], selectivity: [:])
     private(set) var baseline: VerificationReport?
+    private(set) var confusion: ConfusionMatrix?
 
     var selectedInput: CartographyInput?
     private(set) var currentTrace: Trace?
@@ -79,8 +80,13 @@ final class MapStore {
             labeling = Attribution.Labeling(labels: [:], selectivity: [:])
         }
         regions = regs
-        baseline = adapter.capabilities.contains(.verification)
-            ? Verification.evaluate(adapter: adapter, corpus: evalCorpus) : nil
+        if adapter.capabilities.contains(.verification) {
+            baseline = Verification.evaluate(adapter: adapter, corpus: evalCorpus)
+            confusion = Verification.confusion(adapter: adapter, corpus: evalCorpus,
+                                               labels: adapter.classLabels)
+        } else {
+            baseline = nil; confusion = nil
+        }
         selectedRegionIDs = []
         diff = nil
         steerFeatureID = regs.first { $0.kind == .feature }?.id
