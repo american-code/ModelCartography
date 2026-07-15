@@ -1,0 +1,16 @@
+## Xcode / build
+build/
+DerivedData/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+*.xcuserstate
+
+## XcodeGen generates the project — regenerate with `xcodegen`
+ModelCartography.xcodeproj/
+
+## macOS
+.DS_Store
+
+## Swift
+.swiftpm/
+.build/
