@@ -12,6 +12,7 @@ struct CortexView: View {
     @Bindable var store: MapStore
     #if os(macOS) || os(iOS)
     @State private var showingImporter = false
+    @State private var showingLogImporter = false
     #endif
 
     var body: some View {
@@ -36,6 +37,13 @@ struct CortexView: View {
                 store.loadCoreML(url: url)
             }
         }
+        .fileImporter(isPresented: $showingLogImporter,
+                      allowedContentTypes: [.json],
+                      allowsMultipleSelection: false) { result in
+            if case .success(let urls) = result, let url = urls.first {
+                store.loadRoutingLog(url: url)
+            }
+        }
         #endif
     }
 
@@ -48,12 +56,18 @@ struct CortexView: View {
                     Chip(text: store.capabilitySummary, tint: Theme.trace)
                 }
             }
-            HStack(spacing: 10) {
-                Button("Demo Net") { store.useDemoNet() }
-                Button("Text Model") { store.useDenseTextModel() }
-                Button("MoE Model") { store.useMoEModel() }
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 10) {
+                    Button("Demo Net") { store.useDemoNet() }
+                    Button("Text Model") { store.useDenseTextModel() }
+                    Button("MoE Model") { store.useMoEModel() }
+                    Button("Import Log") { store.useRoutingLogSample() }
+                }
                 #if os(macOS) || os(iOS)
-                Button("Load Core ML…") { showingImporter = true }
+                HStack(spacing: 10) {
+                    Button("Load Core ML…") { showingImporter = true }
+                    Button("Load Log…") { showingLogImporter = true }
+                }
                 #endif
             }
             .font(.callout)

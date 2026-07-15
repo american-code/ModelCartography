@@ -31,6 +31,7 @@ and the optimizer once; add a new architecture by writing one adapter.
 | Honest-degradation adapter | `Sources/Adapters/CoreML/CoreMLAdapter.swift` | wraps a Core ML classifier; occlusion saliency; **no** internal ablation |
 | Dense adapter (Phase 2) | `Sources/Adapters/DenseText/` | residual model + sparse autoencoder → features, logit lens, attribution, steering |
 | MoE adapter (Phase 3) | `Sources/Adapters/MoE/` | our own router + experts → routing cortex, expert attribution, utilization pruning |
+| Routing-log adapter | `Sources/Adapters/RoutingLog/` | imports an external MoE engine's JSON routing log → mapped, labeled cortex + verification |
 | Attribution | `Sources/Pipeline/Attribution.swift` | labels each region with the class it prefers |
 | Verification | `Sources/Pipeline/Verification.swift` | ablate → re-verify on held-out data + collateral detection |
 | UI | `Sources/App/` | Cortex map · Trace view · Intervene panel · Verify (health + confusion) |
@@ -134,7 +135,21 @@ mixes up (rows = actual, columns = predicted, diagonal = correct). Paired with t
 before/after diff on the Intervene tab, this is the closed loop that makes removing "unuseful"
 regions measurable rather than reckless.
 
-### Not yet here
+## Importing an external engine's routing (`Sources/Adapters/RoutingLog/`)
 
-Importing routing logs from a real external MoE engine as one more adapter — the interface is
-ready for it; only a log-parsing adapter is missing.
+The bridge back to the original Colibrì reference — but instead of wrapping their engine, we
+define the **JSON routing log** an MoE engine emits (per-input, per-layer expert gates + the
+prediction) and *import* it. **Import Log** loads a sample (generated from our MoE and
+round-tripped through JSON to prove the path); **Load Log…** (macOS/iOS) opens any file in the
+schema. See [`docs/sample-routing-log.json`](docs/sample-routing-log.json) for the exact shape.
+
+An imported log carries no weights, so the adapter declares only
+`internalActivations · routingPath · verification`: you get the mapped cortex, the same
+Attribution stage **labels its experts**, and the Verify tab scores it against the logged
+predictions — but Intervene is read-only (identifying cold experts is fine; pruning or steering
+needs the live engine). That is the honest-degradation design reaching all the way to a model
+we never actually run.
+
+**Every design item is now built.** The `ModelAdapter` interface spans a Core ML classifier, a
+pure-Swift MLP, a dense residual model with a sparse autoencoder, a native MoE, and an imported
+routing log — one UI, degrading per declared capabilities.

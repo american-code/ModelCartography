@@ -21,13 +21,15 @@ struct IntervenePanel: View {
                     if let base = store.steerBase, let after = store.steerResult {
                         steeringResult(base: base, after: after)
                     }
-                } else if store.canAblate {
-                    baselineCard
-                    if store.hasExperts { utilizationCard }
-                    selectionCard
-                    if let d = store.diff { resultCard(d) }
                 } else {
-                    unsupportedCard
+                    if store.canAblate { baselineCard }
+                    if store.hasExperts { utilizationCard }
+                    if store.canAblate {
+                        selectionCard
+                        if let d = store.diff { resultCard(d) }
+                    } else {
+                        unsupportedCard
+                    }
                 }
             }
             .padding(20)
@@ -147,18 +149,30 @@ struct IntervenePanel: View {
 
     private var unsupportedCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("Internal ablation unavailable", systemImage: "lock.fill")
+            Label("Interventions unavailable", systemImage: "lock.fill")
                 .font(.headline).foregroundStyle(Theme.trace)
-            Text("""
-            \(store.adapterName) exposes only its outputs, so there are no internal regions to \
-            remove. This is the framework degrading honestly — the same UI, minus the capability \
-            the model can't support. Switch to the Demo Net (Cortex tab) to exercise the full \
-            ablate → re-verify loop.
-            """)
-            .font(.callout).foregroundStyle(.secondary)
+            Text(unsupportedReason)
+                .font(.callout).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .card()
+    }
+
+    private var unsupportedReason: String {
+        if store.hasExperts {
+            return """
+            \(store.adapterName) is a static routing snapshot — you can map and label its experts \
+            and verify accuracy, but removing or steering them needs the live engine or its \
+            weights. This is the framework degrading honestly: same UI, minus the capabilities a \
+            log can't support.
+            """
+        }
+        return """
+        \(store.adapterName) exposes only its outputs, so there are no internal regions to remove. \
+        This is the framework degrading honestly — the same UI, minus the capability the model \
+        can't support. Switch to the Demo Net or MoE Model (Cortex tab) to exercise the full \
+        ablate → re-verify loop.
+        """
     }
 
     // MARK: Expert utilization (Phase 3 — the prune/pin signal)
@@ -177,11 +191,16 @@ struct IntervenePanel: View {
                          tint: cold ? Theme.critical : Theme.signal,
                          emphasized: cold)
             }
-            Button { store.markColdExperts() } label: {
-                Label("Mark cold experts", systemImage: "thermometer.snowflake")
+            if store.canAblate {
+                Button { store.markColdExperts() } label: {
+                    Label("Mark cold experts", systemImage: "thermometer.snowflake")
+                }
+                .buttonStyle(.bordered)
+                .padding(.top, 2)
+            } else {
+                Text("Read-only: this is an imported snapshot, so cold experts can be identified but not pruned here.")
+                    .font(.caption).foregroundStyle(.secondary).padding(.top, 2)
             }
-            .buttonStyle(.bordered)
-            .padding(.top, 2)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .card()

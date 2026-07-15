@@ -295,6 +295,31 @@ final class MapStore {
         refreshForNewAdapter()
     }
 
+    /// Import a sample external routing log (generated from our MoE, round-tripped via JSON).
+    func useRoutingLogSample() {
+        let a = RoutingLogAdapter.sample()
+        adapter = a
+        corpus = a.inputs
+        evalCorpus = a.inputs
+        refreshForNewAdapter()
+    }
+
+    /// Load a real external routing log in the RoutingLog JSON schema.
+    func loadRoutingLog(url: URL) {
+        do {
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            let log = try RoutingLog.decoded(from: try Data(contentsOf: url))
+            let a = RoutingLogAdapter(log: log)
+            adapter = a
+            corpus = a.inputs
+            evalCorpus = a.inputs
+            refreshForNewAdapter()
+        } catch {
+            status = "Couldn't load routing log: \(error)"
+        }
+    }
+
     #if canImport(CoreML)
     /// Load a Core ML image classifier (.mlmodel / .mlmodelc / .mlpackage). macOS & iOS.
     func loadCoreML(url: URL) {
