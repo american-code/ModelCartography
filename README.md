@@ -5,11 +5,11 @@ inference from input to output, and surgically target what to keep, cut, or repl
 
 One SwiftUI codebase, three platforms: **macOS · iPadOS · tvOS**.
 
-This repository covers **Phases 1–3** of the design in the accompanying design note: the full
-five-stage pipeline (Instrument → Capture → Attribute → Map → Intervene), plus Map B
-(interpretable features), logit lens, attribution, steering, and a native Mixture-of-Experts
-model with router-driven expert pruning — all behind one adapter interface that scales from a
-Core ML classifier to a dense residual model to an MoE without a rewrite.
+This repository implements the **entire design note**: the five-stage pipeline
+(Instrument → Capture → Attribute → Map → Intervene), Map B (interpretable features), logit
+lens, attribution, steering, a native Mixture-of-Experts model with router-driven expert
+pruning, and an importer for an external engine's routing log — all behind **one adapter
+interface** spanning five very different model types without a rewrite.
 
 ---
 
@@ -21,7 +21,53 @@ Each adapter *declares* what it can honestly do via `capabilities`, so the tool 
 gracefully instead of faking a capability the model can't support. Write the UI, the tracer,
 and the optimizer once; add a new architecture by writing one adapter.
 
-## What's here (Phase 1)
+## Architecture
+
+```mermaid
+flowchart TB
+    subgraph UI["UI — written once (SwiftUI, macOS · iPadOS · tvOS)"]
+        direction LR
+        C[Cortex] --- T[Trace] --- I[Intervene] --- V[Verify]
+    end
+    UI --> STORE["MapStore<br/>observable state"]
+    STORE --> PIPE
+
+    subgraph PIPE["Pipeline (Sources/Pipeline)"]
+        direction LR
+        AT["Attribution<br/>label regions"] --- VE["Verification<br/>diff · confusion"]
+    end
+
+    PIPE --> IFACE{{"ModelAdapter<br/>+ Capabilities"}}
+
+    IFACE --> A1["Core ML<br/>saliency"]
+    IFACE --> A2["MockNetwork MLP<br/>ablation · gradients"]
+    IFACE --> A3["Dense + SAE<br/>features · lens · steer"]
+    IFACE --> A4["MoE<br/>routing · prune"]
+    IFACE --> A5["Routing Log<br/>import · read-only"]
+```
+
+Everything above the interface is architecture-agnostic; everything below it is one small,
+self-contained adapter. The dashed contract in the middle — `ModelAdapter` + `Capabilities` —
+is the whole design: get it right and each new model is an addition, not a rewrite.
+
+### Capabilities by adapter
+
+| Capability | Core ML | MockNet | Dense+SAE | MoE | Routing Log |
+|---|:--:|:--:|:--:|:--:|:--:|
+| internal activations | | ✓ | ✓ | ✓ | ✓ |
+| saliency | ✓ | ✓ | | | |
+| semantic features (Map B) | | | ✓ | | |
+| logit lens | | | ✓ | ✓ | |
+| attribution | | | ✓ | ✓ | |
+| routing path | | ✓ | ✓ | ✓ | ✓ |
+| ablation / pruning | | ✓ | | ✓ | |
+| steering | | | ✓ | | |
+| verification | ✓ | ✓ | ✓ | ✓ | ✓ |
+
+The UI reads this table at runtime: Intervene shows steering, ablation, or a read-only
+diagnostic — or an honest "unsupported" card — purely from what each adapter declares.
+
+## Map of the code
 
 | Piece | File | Role |
 |---|---|---|
