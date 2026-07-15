@@ -14,9 +14,9 @@ struct TraceView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                Text("Trace").font(.largeTitle.bold())
-                Text("Pick an input; follow it from input to prediction.")
-                    .foregroundStyle(.secondary)
+                PageHeader(store: store, title: "Trace",
+                           expertSubtitle: "Pick an input; follow it from input to prediction.",
+                           plainSubtitle: "Pick something and watch how the model turns it into an answer.")
 
                 inputPicker
 
@@ -79,7 +79,8 @@ struct TraceView: View {
                 GridThumbnail(grid: g, saliency: showSaliency ? store.currentSaliency : nil)
                     .frame(width: 180, height: 180)
                 if store.canSaliency {
-                    Toggle("Saliency overlay", isOn: $showSaliency).font(.caption)
+                    Toggle(store.t("Saliency overlay", "Highlight what mattered"), isOn: $showSaliency)
+                        .font(.caption)
                 }
             } else if let text = input.display {
                 Text("“\(text)”").font(.title3).italic()
@@ -123,8 +124,9 @@ struct TraceView: View {
 
     private var lensCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Logit lens").font(.headline)
-            Text("the model's running guess decoded at each layer — watch it sharpen with depth")
+            Text(store.t("Logit lens", "How the guess takes shape")).font(.headline)
+            Text(store.t("the model's running guess decoded at each layer — watch it sharpen with depth",
+                         "the model's best guess at each step — it gets more sure as it goes"))
                 .font(.caption2).foregroundStyle(.secondary)
             ForEach(store.currentLens, id: \.layerIndex) { readout in
                 VStack(alignment: .leading, spacing: 4) {
@@ -154,8 +156,9 @@ struct TraceView: View {
 
     private func attributionCard(_ graph: AttributionGraph) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Attribution").font(.headline)
-            Text("which features pushed the output toward “\(graph.predicted)”")
+            Text(store.t("Attribution", "What convinced it")).font(.headline)
+            Text(store.t("which features pushed the output toward “\(graph.predicted)”",
+                         "which parts pushed the answer toward “\(graph.predicted)”"))
                 .font(.caption2).foregroundStyle(.secondary)
             let maxMag = graph.contributions.map { abs($0.value) }.max() ?? 1
             ForEach(graph.contributions) { c in
@@ -173,7 +176,7 @@ struct TraceView: View {
 
     private var pathwayCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Routing path").font(.headline)
+            Text(store.t("Routing path", "The path it took")).font(.headline)
             if let trace = store.currentTrace, !trace.routingPath.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
@@ -185,7 +188,8 @@ struct TraceView: View {
                         }
                     }
                 }
-                Text("the strongest region at each layer — the literal expert sequence in an MoE model")
+                Text(store.t("the strongest region at each layer — the literal expert sequence in an MoE model",
+                             "the busiest part at each step, from input to answer"))
                     .font(.caption2).foregroundStyle(.secondary)
             } else {
                 Text("No path (output-only model)").font(.caption).foregroundStyle(.secondary)

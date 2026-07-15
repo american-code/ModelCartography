@@ -49,10 +49,12 @@ struct CortexView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Cortex").font(.largeTitle.bold())
+            PageHeader(store: store, title: "Cortex",
+                       expertSubtitle: "Columns are layers; each cell is a region, brighter = more active for this input.",
+                       plainSubtitle: "A map of the parts inside the model. Brighter squares did more work for the input you picked.")
             HStack(spacing: 8) {
                 Chip(text: store.adapterName, tint: Theme.signal)
-                if !store.capabilitySummary.isEmpty {
+                if !store.simplified, !store.capabilitySummary.isEmpty {
                     Chip(text: store.capabilitySummary, tint: Theme.trace)
                 }
             }
@@ -103,9 +105,16 @@ struct CortexView: View {
     }
 
     private var cortexHint: String {
-        if store.canSteer { return "cells are SAE features; brightness = activation" }
-        if store.hasExperts { return "cells are experts; brightness = router gate for this input" }
-        return "cells brighten with activation for this input"
+        if store.canSteer {
+            return store.t("cells are SAE features; brightness = activation",
+                           "each square is a concept the model learned; brighter means it fired more")
+        }
+        if store.hasExperts {
+            return store.t("cells are experts; brightness = router gate for this input",
+                           "each square is a mini-expert; brighter means the model leaned on it more")
+        }
+        return store.t("cells brighten with activation for this input",
+                       "brighter squares were more active for this input")
     }
 
     private var cortex: some View {
@@ -136,11 +145,18 @@ struct CortexView: View {
 
     private var legend: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Reading the map").font(.headline)
-            legendRow(color: Theme.signal, text: "Brighter cell = stronger activation for the current input")
-            legendRow(color: Theme.signal, text: "Teal ring = on this input's routing path", ring: true)
-            legendRow(color: Theme.trace, text: "Amber ring = marked for ablation (tap a hidden neuron)", ring: true)
-            Text("Domain labels come from attribution: each neuron is tagged with the class it most prefers.")
+            Text(store.t("Reading the map", "How to read this")).font(.headline)
+            legendRow(color: Theme.signal,
+                      text: store.t("Brighter cell = stronger activation for the current input",
+                                    "Brighter square = did more work for this input"))
+            legendRow(color: Theme.signal,
+                      text: store.t("Teal ring = on this input's routing path",
+                                    "Teal outline = part of the path this input took"), ring: true)
+            legendRow(color: Theme.trace,
+                      text: store.t("Amber ring = marked for ablation (tap a hidden neuron)",
+                                    "Amber outline = picked to remove (tap a square to pick it)"), ring: true)
+            Text(store.t("Domain labels come from attribution: each neuron is tagged with the class it most prefers.",
+                         "Each square is labeled with the topic it cares about most."))
                 .font(.caption).foregroundStyle(.secondary).padding(.top, 2)
         }
         .frame(maxWidth: .infinity, alignment: .leading)

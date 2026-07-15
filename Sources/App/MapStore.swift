@@ -39,6 +39,11 @@ final class MapStore {
     private(set) var diff: DiffReport?
     private(set) var status: String = ""
 
+    /// Plain-language mode: swaps jargon labels/captions for everyday wording.
+    var simplified = false
+    /// Pick the wording for the current mode. `t("Logit lens", "How the guess forms")`.
+    func t(_ expert: String, _ plain: String) -> String { simplified ? plain : expert }
+
     // Steering (Phase 2 intervention).
     var steerFeatureID: String?
     var steerGain: Double = 4.0

@@ -12,7 +12,9 @@ struct IntervenePanel: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                Text("Intervene").font(.largeTitle.bold())
+                PageHeader(store: store, title: store.t("Intervene", "Experiment"),
+                           expertSubtitle: "Remove or steer parts of the model, then re-verify what changed.",
+                           plainSubtitle: "Change part of the model, then check whether it got better or worse.")
 
                 if store.canSteer {
                     steeringIntro
@@ -42,12 +44,16 @@ struct IntervenePanel: View {
 
     private var steeringIntro: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Steering").font(.headline)
-            Text("""
+            Text(store.t("Steering", "Nudge the model")).font(.headline)
+            Text(store.t("""
             Add a feature's direction to the residual stream at inference to push behavior — \
             replacing retraining. Pick a feature, set the gain, and apply it to the input \
             currently selected on the Trace tab.
-            """)
+            """, """
+            Turn one of the model's learned concepts up or down to push its answer — no \
+            retraining needed. Pick a concept, set how hard to push, and apply it to whatever \
+            input you picked on the Trace tab.
+            """))
             .font(.callout).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -56,7 +62,7 @@ struct IntervenePanel: View {
 
     private var steeringPicker: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Feature").font(.subheadline.bold())
+            Text(store.t("Feature", "Concept")).font(.subheadline.bold())
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ForEach(store.featureRegions) { region in
@@ -82,7 +88,7 @@ struct IntervenePanel: View {
     private var steeringControls: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Gain").font(.subheadline.bold())
+                Text(store.t("Gain", "How hard to push")).font(.subheadline.bold())
                 Spacer()
                 Text(String(format: "×%.1f", store.steerGain))
                     .font(.callout.monospacedDigit()).foregroundStyle(Theme.trace)
@@ -115,7 +121,7 @@ struct IntervenePanel: View {
                 Button {
                     store.applySteering()
                 } label: {
-                    Label("Apply steering", systemImage: "dial.high")
+                    Label(store.t("Apply steering", "Apply nudge"), systemImage: "dial.high")
                 }
                 .buttonStyle(.borderedProminent).tint(Theme.trace)
                 .disabled(store.steerFeatureID == nil || store.selectedInput == nil)
@@ -130,7 +136,7 @@ struct IntervenePanel: View {
 
     private func steeringResult(base: [String: Double], after: [String: Double]) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Output shift").font(.headline)
+            Text(store.t("Output shift", "How the answer changed")).font(.headline)
             ForEach(store.adapter.classLabels, id: \.self) { cls in
                 let b = base[cls] ?? 0, a = after[cls] ?? 0
                 VStack(spacing: 3) {
@@ -140,7 +146,8 @@ struct IntervenePanel: View {
                              tint: a >= b ? Theme.signal : Theme.critical, emphasized: true)
                 }
             }
-            Text("top row = before · bottom row = after steering")
+            Text(store.t("top row = before · bottom row = after steering",
+                         "top bar = before · bottom bar = after the nudge"))
                 .font(.caption2).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -149,7 +156,7 @@ struct IntervenePanel: View {
 
     private var unsupportedCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("Interventions unavailable", systemImage: "lock.fill")
+            Label(store.t("Interventions unavailable", "Can't change this model"), systemImage: "lock.fill")
                 .font(.headline).foregroundStyle(Theme.trace)
             Text(unsupportedReason)
                 .font(.callout).foregroundStyle(.secondary)
@@ -179,8 +186,9 @@ struct IntervenePanel: View {
 
     private var utilizationCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Expert utilization").font(.headline)
-            Text("how much the router uses each expert across the corpus — cold experts are safe to prune")
+            Text(store.t("Expert utilization", "How much each expert is used")).font(.headline)
+            Text(store.t("how much the router uses each expert across the corpus — cold experts are safe to prune",
+                         "how often the model uses each expert — barely-used ones are safe to remove"))
                 .font(.caption2).foregroundStyle(.secondary)
             let maxU = store.expertsByUtilization.map { $0.util }.max() ?? 1
             ForEach(store.expertsByUtilization, id: \.region.id) { item in
@@ -193,12 +201,13 @@ struct IntervenePanel: View {
             }
             if store.canAblate {
                 Button { store.markColdExperts() } label: {
-                    Label("Mark cold experts", systemImage: "thermometer.snowflake")
+                    Label(store.t("Mark cold experts", "Pick the barely-used ones"), systemImage: "thermometer.snowflake")
                 }
                 .buttonStyle(.bordered)
                 .padding(.top, 2)
             } else {
-                Text("Read-only: this is an imported snapshot, so cold experts can be identified but not pruned here.")
+                Text(store.t("Read-only: this is an imported snapshot, so cold experts can be identified but not pruned here.",
+                             "View only: this is an imported snapshot, so unused experts can be spotted but not removed here."))
                     .font(.caption).foregroundStyle(.secondary).padding(.top, 2)
             }
         }
@@ -208,11 +217,12 @@ struct IntervenePanel: View {
 
     private var baselineCard: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Baseline").font(.headline)
+            Text(store.t("Baseline", "Starting point")).font(.headline)
             if let b = store.baseline {
                 Text(String(format: "%.1f%% accuracy", b.overallAccuracy * 100))
                     .font(.title2.bold().monospacedDigit())
-                Text("held-out set · \(b.count) inputs").font(.caption).foregroundStyle(.secondary)
+                Text(store.t("held-out set · \(b.count) inputs",
+                             "tested on \(b.count) fresh inputs")).font(.caption).foregroundStyle(.secondary)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -221,11 +231,12 @@ struct IntervenePanel: View {
 
     private var selectionCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Marked for removal").font(.headline)
+            Text(store.t("Marked for removal", "Chosen to remove")).font(.headline)
 
             if store.canMarkDomains {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Quick-mark a whole domain").font(.caption).foregroundStyle(.secondary)
+                    Text(store.t("Quick-mark a whole domain", "Pick everything for one topic"))
+                        .font(.caption).foregroundStyle(.secondary)
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
                             ForEach(store.adapter.classLabels, id: \.self) { label in
@@ -239,7 +250,8 @@ struct IntervenePanel: View {
             }
 
             if store.selectedRegionIDs.isEmpty {
-                Text("Tap hidden neurons in the Cortex tab to mark them, then remove them here.")
+                Text(store.t("Tap hidden neurons in the Cortex tab to mark them, then remove them here.",
+                             "Tap squares in the Cortex tab to pick them, then remove them here."))
                     .font(.callout).foregroundStyle(.secondary)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -254,13 +266,13 @@ struct IntervenePanel: View {
                 Button {
                     store.ablateAndVerify()
                 } label: {
-                    Label("Ablate & Re-verify", systemImage: "scissors")
+                    Label(store.t("Ablate & Re-verify", "Remove & recheck"), systemImage: "scissors")
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(Theme.trace)
                 .disabled(store.selectedRegionIDs.isEmpty)
 
-                Button("Clear") { store.clearIntervention() }
+                Button(store.t("Clear", "Reset")) { store.clearIntervention() }
                     .buttonStyle(.bordered)
                     .disabled(store.selectedRegionIDs.isEmpty && store.diff == nil)
             }
@@ -271,20 +283,20 @@ struct IntervenePanel: View {
 
     private func resultCard(_ d: DiffReport) -> some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Result").font(.headline)
+            Text(store.t("Result", "What happened")).font(.headline)
 
             HStack(alignment: .firstTextBaseline, spacing: 16) {
-                metric("Before", String(format: "%.1f%%", d.base.overallAccuracy * 100), Theme.muted)
+                metric(store.t("Before", "Before"), String(format: "%.1f%%", d.base.overallAccuracy * 100), Theme.muted)
                 Image(systemName: "arrow.right").foregroundStyle(.secondary)
-                metric("After", String(format: "%.1f%%", d.modified.overallAccuracy * 100),
+                metric(store.t("After", "After"), String(format: "%.1f%%", d.modified.overallAccuracy * 100),
                        d.accuracyDelta < -0.001 ? Theme.critical : Theme.signal)
-                metric("Δ", String(format: "%+.1f pts", d.accuracyDelta * 100),
+                metric(store.t("Δ", "Change"), String(format: "%+.1f pts", d.accuracyDelta * 100),
                        d.accuracyDelta < -0.001 ? Theme.critical : Theme.signal)
             }
 
             Divider()
 
-            Text("Per-class change").font(.subheadline.bold())
+            Text(store.t("Per-class change", "Change for each topic")).font(.subheadline.bold())
             ForEach(store.adapter.classLabels, id: \.self) { cls in
                 let delta = d.perClassDelta[cls] ?? 0
                 ValueBar(label: cls,
@@ -295,11 +307,15 @@ struct IntervenePanel: View {
             }
 
             if d.collateral.isEmpty {
-                Label("No collateral damage — good domains survived.", systemImage: "checkmark.seal.fill")
+                Label(store.t("No collateral damage — good domains survived.",
+                              "Nothing important broke — the topics that worked still work."),
+                      systemImage: "checkmark.seal.fill")
                     .font(.callout).foregroundStyle(Theme.signal)
             } else {
-                Label("Collateral damage: \(d.collateral.joined(separator: ", ")). "
-                      + "You removed something a good class depended on.",
+                Label(store.t("Collateral damage: \(d.collateral.joined(separator: ", ")). "
+                              + "You removed something a good class depended on.",
+                              "This broke something that was working: \(d.collateral.joined(separator: ", ")). "
+                              + "You removed a part that topic needed."),
                       systemImage: "exclamationmark.triangle.fill")
                     .font(.callout).foregroundStyle(Theme.critical)
             }

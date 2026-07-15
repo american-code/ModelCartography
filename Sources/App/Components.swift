@@ -93,6 +93,44 @@ struct Chip: View {
     }
 }
 
+/// A page header with the title and the global Simplify toggle. Every tab uses this so the
+/// toggle is reachable from anywhere, and a plain-language subtitle appears when it's on.
+struct PageHeader: View {
+    @Bindable var store: MapStore
+    let title: String
+    var expertSubtitle: String? = nil
+    var plainSubtitle: String? = nil
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(title).font(.largeTitle.bold())
+                Spacer()
+                SimplifyToggle(store: store)
+            }
+            if let sub = store.simplified ? plainSubtitle : expertSubtitle {
+                Text(sub).foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+struct SimplifyToggle: View {
+    @Bindable var store: MapStore
+    var body: some View {
+        Button {
+            store.simplified.toggle()
+        } label: {
+            Label(store.simplified ? "Plain language" : "Simplify",
+                  systemImage: store.simplified ? "checkmark.circle.fill" : "text.magnifyingglass")
+                .font(.callout)
+        }
+        .buttonStyle(.bordered)
+        .tint(store.simplified ? Theme.signal : Theme.muted)
+        .help("Explain everything in everyday language")
+    }
+}
+
 /// Human-readable name for a cortex column.
 func layerTitle(for regions: [Region]) -> String {
     guard let kind = regions.first?.kind, let idx = regions.first?.layerIndex else { return "Layer" }

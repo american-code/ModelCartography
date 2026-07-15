@@ -13,15 +13,16 @@ struct VerifyView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                Text("Verify").font(.largeTitle.bold())
-                Text("The same held-out check for any model — where it's right, and where it fails.")
-                    .foregroundStyle(.secondary)
+                PageHeader(store: store, title: "Verify",
+                           expertSubtitle: "The same held-out check for any model — where it's right, and where it fails.",
+                           plainSubtitle: "A quick report card: how often the model is right, and what it gets wrong.")
 
                 if let c = store.confusion, c.total > 0 {
                     healthCard(c)
                     confusionCard(c)
                 } else {
-                    Text("This model doesn't expose a verifiable held-out score.")
+                    Text(store.t("This model doesn't expose a verifiable held-out score.",
+                                 "This model can't be scored here."))
                         .foregroundStyle(.secondary).card()
                 }
             }
@@ -34,7 +35,7 @@ struct VerifyView: View {
     private func healthCard(_ c: ConfusionMatrix) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
-                Text("Model health").font(.headline)
+                Text(store.t("Model health", "How good is it?")).font(.headline)
                 Spacer()
                 Text(String(format: "%.1f%%", c.accuracy * 100))
                     .font(.title2.bold().monospacedDigit()).foregroundStyle(Theme.signal)
@@ -56,8 +57,9 @@ struct VerifyView: View {
 
     private func confusionCard(_ c: ConfusionMatrix) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Confusion matrix").font(.headline)
-            Text("rows = actual · columns = predicted · diagonal = correct")
+            Text(store.t("Confusion matrix", "What it mixes up")).font(.headline)
+            Text(store.t("rows = actual · columns = predicted · diagonal = correct",
+                         "each row is the real answer; green = right, red = mistakes"))
                 .font(.caption2).foregroundStyle(.secondary)
 
             ScrollView(.horizontal, showsIndicators: false) {

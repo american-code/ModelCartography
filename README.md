@@ -128,6 +128,13 @@ while the harness flags `horizontal` as collateral damage.
    routing path, and a saliency overlay.
 3. **Intervene** — quick-mark a whole domain (or hand-pick neurons), then **Ablate & Re-verify**.
    The result diffs before/after accuracy per class and flags any good class you damaged.
+4. **Verify** — a report card for any model: overall + per-class accuracy and a confusion matrix.
+
+**Simplify toggle.** Every tab has a **Simplify** button (top-right). Turn it on and the same
+screens re-label themselves in plain language — "logit lens" → "how the guess takes shape",
+"ablate" → "remove & recheck", "collateral damage" → "this broke something that was working" —
+so you don't need to be a research scientist to read it. The data shown is identical; only the
+words change.
 
 ## Phase 2 — the dense model (`Sources/Adapters/DenseText/`)
 
