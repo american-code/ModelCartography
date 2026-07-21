@@ -5,7 +5,7 @@ inference from input to output, and surgically target what to keep, cut, or repl
 
 One SwiftUI codebase, three platforms: **macOS · iPadOS · tvOS**.
 
-This repository implements the **entire design note**: the five-stage pipeline
+This repository implements a complete, self-contained interpretability design: the five-stage pipeline
 (Instrument → Capture → Attribute → Map → Intervene), Map B (interpretable features), logit
 lens, attribution, steering, a native Mixture-of-Experts model with router-driven expert
 pruning, and an importer for an external engine's routing log — all behind **one adapter
@@ -206,3 +206,22 @@ we never actually run.
 **Every design item is now built.** The `ModelAdapter` interface spans a Core ML classifier, a
 pure-Swift MLP, a dense residual model with a sparse autoencoder, a native MoE, and an imported
 routing log — one UI, degrading per declared capabilities.
+
+## License
+
+This project is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)** — see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).
+
+### Commercial Use
+
+Commercial use of this software requires a separate commercial license. Contact **jmelton@americancode.org** to obtain one.
+
+**What this means:**
+- **Open-source use** — free to use, modify, and distribute under AGPL-3.0.
+- **Commercial use** — requires a commercial license for, e.g.:
+  - proprietary or closed-source products that embed this code,
+  - SaaS/hosted offerings built on it, without releasing your source under AGPL-3.0,
+  - enterprise use that can't meet AGPL-3.0's source-availability terms.
+
+For commercial licensing inquiries, please contact: **jmelton@americancode.org**
+
+Copyright (C) 2026 American Code.
