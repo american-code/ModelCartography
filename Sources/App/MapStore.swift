@@ -34,6 +34,17 @@ final class MapStore {
     private(set) var currentLens: [LayerReadout] = []
     private(set) var currentAttribution: AttributionGraph?
 
+    // Interp hook-extracted data.
+    private(set) var currentAttentionPatterns: [AttentionHeadPattern] = []
+
+    // Circuit / activation patching state.
+    var circuitCleanPrompt: String = "the quick fox jumped"
+    var circuitCorruptedPrompt: String = "the lazy dog sat"
+    private(set) var patchingMatrix: PatchingMatrix?
+    private(set) var circuitSelectedLayer: Int?
+    private(set) var circuitSelectedHead: Int?
+    private(set) var circuitHeadPattern: AttentionHeadPattern?
+
     /// Regions the user has marked for ablation (neurons only).
     var selectedRegionIDs: Set<String> = []
     private(set) var diff: DiffReport?
@@ -96,6 +107,7 @@ final class MapStore {
         diff = nil
         steerFeatureID = regs.first { $0.kind == .feature }?.id
         steerBase = nil; steerResult = nil
+        patchingMatrix = nil; circuitSelectedLayer = nil; circuitSelectedHead = nil; circuitHeadPattern = nil
         computeExpertUtilization()
         select(corpus.first)
         status = "Loaded \(adapter.name) · \(regions.count) regions · \(capabilitySummary)"
@@ -110,15 +122,19 @@ final class MapStore {
         if c.contains(.semanticFeatures) { names.append("features") }
         if c.contains(.steering) { names.append("steering") }
         if c.contains(.logitLens) { names.append("logit-lens") }
+        if c.contains(.attentionPatterns) { names.append("attention") }
+        if c.contains(.activationPatching) { names.append("patching") }
         return names.joined(separator: " · ")
     }
 
     var adapterName: String { adapter.name }
+    var isCircuitSupported: Bool { adapter.capabilities.contains(.activationPatching) }
     var canAblate: Bool { adapter.capabilities.contains(.ablation) }
     var canSaliency: Bool { adapter.capabilities.contains(.saliency) }
     var canSteer: Bool { adapter.capabilities.contains(.steering) }
     var hasLens: Bool { adapter.capabilities.contains(.logitLens) }
     var hasAttribution: Bool { adapter.capabilities.contains(.attribution) }
+    var hasAttentionPatterns: Bool { adapter.capabilities.contains(.attentionPatterns) }
     var featureRegions: [Region] { regions.filter { $0.kind == .feature } }
     var hasExperts: Bool { regions.contains { $0.kind == .expert } }
 
@@ -158,13 +174,16 @@ final class MapStore {
         selectedInput = input
         steerBase = nil; steerResult = nil
         guard let input else {
-            currentTrace = nil; currentSaliency = nil; currentLens = []; currentAttribution = nil
+            currentTrace = nil; currentSaliency = nil; currentLens = []
+            currentAttribution = nil; currentAttentionPatterns = []
             return
         }
         currentTrace = try? adapter.forward(input)
         currentSaliency = canSaliency ? try? adapter.saliency(for: input) : nil
         currentLens = hasLens ? ((try? adapter.logitLens(input)) ?? []) : []
         currentAttribution = hasAttribution ? try? adapter.attributionGraph(input) : nil
+        currentAttentionPatterns = hasAttentionPatterns
+            ? ((try? adapter.attentionPatterns(input)) ?? []) : []
     }
 
     // MARK: Cortex display helpers
@@ -268,6 +287,30 @@ final class MapStore {
         regions.first { $0.id == id }?.label ?? id
     }
 
+    // MARK: Circuit / activation patching
+
+    func runPatchingSweep() {
+        guard adapter.capabilities.contains(.activationPatching) else { return }
+        let clean = CartographyInput(id: "ckt_clean", display: circuitCleanPrompt, payload: .vector([]))
+        let corrupted = CartographyInput(id: "ckt_corrupted", display: circuitCorruptedPrompt, payload: .vector([]))
+        do {
+            patchingMatrix = try adapter.patchingSweep(clean: clean, corrupted: corrupted)
+            circuitSelectedLayer = nil; circuitSelectedHead = nil; circuitHeadPattern = nil
+            let m = patchingMatrix!
+            status = "Patching sweep complete · \(m.layers)L × \(m.heads)H"
+        } catch {
+            status = "Patching sweep failed: \(error)"
+        }
+    }
+
+    func selectCircuitHead(layer: Int, head: Int) {
+        circuitSelectedLayer = layer
+        circuitSelectedHead = head
+        let clean = CartographyInput(id: "ckt_clean", display: circuitCleanPrompt, payload: .vector([]))
+        circuitHeadPattern = (try? adapter.attentionPatterns(clean))?
+            .first { $0.layerIndex == layer && $0.headIndex == head }
+    }
+
     // MARK: Adapter switching
 
     private func setGridCorpora() {
@@ -299,6 +342,17 @@ final class MapStore {
         adapter = MoEAdapter.make()
         refreshForNewAdapter()
     }
+
+    #if os(macOS) || os(iOS)
+    /// Load the SwiftSci Interp demo adapter (HookedGPT2 with logit lens + attention patterns).
+    func useInterpModel() {
+        let a = InterpAdapter.make()
+        corpus = InterpAdapter.demoCorpus()
+        evalCorpus = InterpAdapter.demoCorpus()
+        adapter = a
+        refreshForNewAdapter()
+    }
+    #endif
 
     /// Import a sample external routing log (generated from our MoE, round-tripped via JSON).
     func useRoutingLogSample() {

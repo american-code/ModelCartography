@@ -32,6 +32,10 @@ public struct Capabilities: OptionSet, Sendable {
     public static let logitLens           = Capabilities(rawValue: 1 << 7)
     /// Can attribute an output back to contributing features.
     public static let attribution         = Capabilities(rawValue: 1 << 8)
+    /// Can extract post-softmax attention weights via the Interp hook system.
+    public static let attentionPatterns   = Capabilities(rawValue: 1 << 9)
+    /// Can run an activation patching sweep to produce an IOI-style [layers × heads] importance matrix.
+    public static let activationPatching  = Capabilities(rawValue: 1 << 10)
 }
 
 /// A model, normalized into the cartography vocabulary.
@@ -68,6 +72,14 @@ public protocol ModelAdapter: AnyObject {
 
     /// How this input's output decomposes over features. Only when `.attribution`.
     func attributionGraph(_ input: CartographyInput) throws -> AttributionGraph
+
+    /// Post-softmax attention weights for every head in every layer. Only when `.attentionPatterns`.
+    func attentionPatterns(_ input: CartographyInput) throws -> [AttentionHeadPattern]
+
+    /// IOI-style sweep: for each head, measure how much its attention pattern shifts between
+    /// `clean` and `corrupted` inputs. Returns a normalized [layers × heads] importance matrix.
+    /// Only when `.activationPatching`.
+    func patchingSweep(clean: CartographyInput, corrupted: CartographyInput) throws -> PatchingMatrix
 }
 
 // Sensible defaults so a minimal adapter only implements what it truly supports.
@@ -88,6 +100,12 @@ public extension ModelAdapter {
     }
     func attributionGraph(_ input: CartographyInput) throws -> AttributionGraph {
         throw CartographyError.unsupported("attribution")
+    }
+    func attentionPatterns(_ input: CartographyInput) throws -> [AttentionHeadPattern] {
+        throw CartographyError.unsupported("attention patterns")
+    }
+    func patchingSweep(clean: CartographyInput, corrupted: CartographyInput) throws -> PatchingMatrix {
+        throw CartographyError.unsupported("activation patching")
     }
 
     /// Convenience: regions grouped into cortex columns by depth.

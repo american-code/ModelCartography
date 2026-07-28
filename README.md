@@ -27,7 +27,7 @@ and the optimizer once; add a new architecture by writing one adapter.
 flowchart TB
     subgraph UI["UI — written once (SwiftUI, macOS · iPadOS · tvOS)"]
         direction LR
-        C[Cortex] --- T[Trace] --- I[Intervene] --- V[Verify]
+        C[Cortex] --- T[Trace] --- I[Intervene] --- V[Verify] --- CI[Circuit]
     end
     UI --> STORE["MapStore<br/>observable state"]
     STORE --> PIPE
@@ -44,6 +44,7 @@ flowchart TB
     IFACE --> A3["Dense + SAE<br/>features · lens · steer"]
     IFACE --> A4["MoE<br/>routing · prune"]
     IFACE --> A5["Routing Log<br/>import · read-only"]
+    IFACE --> A6["Interp GPT-2<br/>logit lens · circuits"]
 ```
 
 Everything above the interface is architecture-agnostic; everything below it is one small,
@@ -52,17 +53,19 @@ is the whole design: get it right and each new model is an addition, not a rewri
 
 ### Capabilities by adapter
 
-| Capability | Core ML | MockNet | Dense+SAE | MoE | Routing Log |
-|---|:--:|:--:|:--:|:--:|:--:|
-| internal activations | | ✓ | ✓ | ✓ | ✓ |
-| saliency | ✓ | ✓ | | | |
-| semantic features (Map B) | | | ✓ | | |
-| logit lens | | | ✓ | ✓ | |
-| attribution | | | ✓ | ✓ | |
-| routing path | | ✓ | ✓ | ✓ | ✓ |
-| ablation / pruning | | ✓ | | ✓ | |
-| steering | | | ✓ | | |
-| verification | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Capability | Core ML | MockNet | Dense+SAE | MoE | Routing Log | Interp GPT-2 |
+|---|:--:|:--:|:--:|:--:|:--:|:--:|
+| internal activations | | ✓ | ✓ | ✓ | ✓ | ✓ |
+| saliency | ✓ | ✓ | | | | |
+| semantic features (Map B) | | | ✓ | | | |
+| logit lens | | | ✓ | ✓ | | ✓ |
+| attention patterns | | | | | | ✓ |
+| attribution | | | ✓ | ✓ | | |
+| routing path | | ✓ | ✓ | ✓ | ✓ | ✓ |
+| ablation / pruning | | ✓ | | ✓ | | |
+| activation patching | | | | | | ✓ |
+| steering | | | ✓ | | | |
+| verification | ✓ | ✓ | ✓ | ✓ | ✓ | |
 
 The UI reads this table at runtime: Intervene shows steering, ablation, or a read-only
 diagnostic — or an honest "unsupported" card — purely from what each adapter declares.
@@ -78,9 +81,10 @@ diagnostic — or an honest "unsupported" card — purely from what each adapter
 | Dense adapter (Phase 2) | `Sources/Adapters/DenseText/` | residual model + sparse autoencoder → features, logit lens, attribution, steering |
 | MoE adapter (Phase 3) | `Sources/Adapters/MoE/` | our own router + experts → routing cortex, expert attribution, utilization pruning |
 | Routing-log adapter | `Sources/Adapters/RoutingLog/` | imports an external MoE engine's JSON routing log → mapped, labeled cortex + verification |
+| Interp adapter | `Sources/Adapters/Interp/InterpAdapter.swift` | HookedGPT2 via SwiftSci Interp → logit lens, attention patterns, activation patching (macOS/iOS) |
 | Attribution | `Sources/Pipeline/Attribution.swift` | labels each region with the class it prefers |
 | Verification | `Sources/Pipeline/Verification.swift` | ablate → re-verify on held-out data + collateral detection |
-| UI | `Sources/App/` | Cortex map · Trace view · Intervene panel · Verify (health + confusion) |
+| UI | `Sources/App/` | Cortex map · Trace view · Intervene panel · Verify (health + confusion) · Circuit sweep |
 
 ### Two adapters, on purpose
 
@@ -125,10 +129,17 @@ while the harness flags `horizontal` as collateral damage.
    current input. A teal ring marks the routing path; tap hidden neurons to mark them for
    ablation.
 2. **Trace** — pick an input, watch it flow to a prediction, see per-class probabilities, the
-   routing path, and a saliency overlay.
+   routing path, and a saliency overlay. With the Interp adapter the **logit lens** table and
+   **attention patterns** appear here: each row is a layer, each column is a top-5 predicted
+   token with its probability — confidence sharpens as you read down.
 3. **Intervene** — quick-mark a whole domain (or hand-pick neurons), then **Ablate & Re-verify**.
    The result diffs before/after accuracy per class and flags any good class you damaged.
 4. **Verify** — a report card for any model: overall + per-class accuracy and a confusion matrix.
+5. **Circuit** — supply a clean/corrupted prompt pair and tap **Run sweep**. The adapter runs an
+   IOI activation-patching sweep and renders a `[layers × heads]` importance heatmap: brighter
+   cell = larger total-variation distance between the two prompts = that head is critical to the
+   behavioral difference. Tap any cell to inspect the head's attention pattern on the clean
+   input. Requires the **Interp GPT-2** adapter (macOS/iOS; not available on tvOS).
 
 **Simplify toggle.** Every tab has a **Simplify** button (top-right). Turn it on and the same
 screens re-label themselves in plain language — "logit lens" → "how the guess takes shape",
@@ -203,9 +214,53 @@ predictions — but Intervene is read-only (identifying cold experts is fine; pr
 needs the live engine). That is the honest-degradation design reaching all the way to a model
 we never actually run.
 
+## Circuit visualization and logit lens (`Sources/Adapters/Interp/`)
+
+The fifth tab and enhanced Trace view are powered by a **HookedGPT2** built on the
+[SwiftSci Interp](https://github.com/swiftsci/Interp) local package — a tiny 2-layer, 2-head,
+d=16 transformer with a 10-word vocabulary and deterministic weights, designed to make every
+internal operation inspectable.
+
+### Logit lens
+
+![Logit lens — how the guess takes shape](docs/logit-lens.svg)
+
+The classifier head is applied to every residual-stream checkpoint (via `Interp.LogitLens`),
+yielding a table in the **Trace** tab where each row is a layer and each column is a top-5
+predicted token with its probability. Confidence sharpens as you read down the table — a
+visual record of how a raw embedding gradually resolves into a committed prediction. The same
+mechanism appears for the Dense+SAE adapter (class probabilities); the Interp adapter extends
+it to full **vocabulary-level token predictions**.
+
+**Attention patterns** also appear in Trace: for each layer × head, a post-softmax weight grid
+shows which positions the head attends to on the selected input.
+
+### Circuit — activation patching sweep
+
+![Circuit — activation patching sweep](docs/circuit-view.svg)
+
+The **Circuit** tab implements the IOI (Indirect Object Identification) patching protocol:
+
+1. Enter a **clean** and a **corrupted** prompt (e.g. `"the quick fox jumped"` vs `"the lazy dog sat"`).
+2. Tap **Run sweep** — the adapter runs forward passes with each head's activations patched from
+   the corrupted run into the clean run (via `Interp.AttentionPatterns` + `HookRegistry`).
+3. The result is a `[layers × heads]` importance matrix: each cell's brightness is the
+   total-variation distance between that head's attention distribution on the two prompts.
+   **Brighter = the head changed most = it is critical to the behavioral difference.**
+4. Tap any cell to expand the **head detail card**: a post-softmax attention heatmap on the
+   clean prompt (rows = query positions, columns = key positions, rows sum to 1).
+
+This is mechanistic interpretability in the UI — not a description of circuits, but a live
+sweep that locates them.
+
+> **Platform note.** The Interp adapter is guarded to `#if os(macOS) || os(iOS)` because MLX
+> (a transitive dependency of SwiftSci Interp) does not support tvOS. All other adapters
+> continue to work on all three platforms.
+
 **Every design item is now built.** The `ModelAdapter` interface spans a Core ML classifier, a
-pure-Swift MLP, a dense residual model with a sparse autoencoder, a native MoE, and an imported
-routing log — one UI, degrading per declared capabilities.
+pure-Swift MLP, a dense residual model with a sparse autoencoder, a native MoE, an imported
+routing log, and a hooked transformer with real mechanistic interpretability — one UI,
+degrading per declared capabilities.
 
 ## License
 

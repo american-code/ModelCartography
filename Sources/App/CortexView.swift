@@ -67,6 +67,7 @@ struct CortexView: View {
                 }
                 #if os(macOS) || os(iOS)
                 HStack(spacing: 10) {
+                    Button("Interp GPT-2") { store.useInterpModel() }
                     Button("Load Core ML…") { showingImporter = true }
                     Button("Load Log…") { showingLogImporter = true }
                 }

@@ -7,9 +7,32 @@
 
 import SwiftUI
 
+/// A square grid that visualizes one attention head's post-softmax weights.
+/// Darker cell = higher probability mass; rows are query positions, columns are key positions.
+struct AttentionHeatmap: View {
+    let pattern: AttentionHeadPattern
+
+    var body: some View {
+        VStack(spacing: 1) {
+            ForEach(0..<pattern.seqLen, id: \.self) { row in
+                HStack(spacing: 1) {
+                    ForEach(0..<pattern.seqLen, id: \.self) { col in
+                        let w = pattern.weights[row * pattern.seqLen + col]
+                        Color(white: Double(1.0 - w * 0.85))
+                            .frame(width: 18, height: 18)
+                    }
+                }
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.primary.opacity(0.12), lineWidth: 0.5))
+    }
+}
+
 struct TraceView: View {
     @Bindable var store: MapStore
     @State private var showSaliency = true
+    @State private var lensAnimPhase = 0
 
     var body: some View {
         ScrollView {
@@ -27,6 +50,9 @@ struct TraceView: View {
                     }
                     if store.hasLens { lensCard }
                     if store.hasAttribution, let g = store.currentAttribution { attributionCard(g) }
+                    if store.hasAttentionPatterns, !store.currentAttentionPatterns.isEmpty {
+                        attentionCard
+                    }
                     pathwayCard
                 }
             }
@@ -125,31 +151,33 @@ struct TraceView: View {
     private var lensCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(store.t("Logit lens", "How the guess takes shape")).font(.headline)
-            Text(store.t("the model's running guess decoded at each layer — watch it sharpen with depth",
-                         "the model's best guess at each step — it gets more sure as it goes"))
-                .font(.caption2).foregroundStyle(.secondary)
-            ForEach(store.currentLens, id: \.layerIndex) { readout in
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text(readout.name).font(.caption.monospaced())
-                        Spacer()
-                        Text("→ \(readout.top)").font(.caption.bold()).foregroundStyle(Theme.signal)
-                    }
-                    HStack(spacing: 4) {
-                        ForEach(store.adapter.classLabels, id: \.self) { label in
-                            let p = readout.probabilities[label] ?? 0
-                            Capsule()
-                                .fill(label == readout.top ? Theme.signal : Color.primary.opacity(0.12))
-                                .frame(height: 6)
-                                .frame(maxWidth: .infinity)
-                                .opacity(0.35 + 0.65 * p)
+            Text(store.t(
+                "top-5 predicted tokens at each residual stream layer — confidence sharpens with depth",
+                "the model's top 5 guesses at each step — it grows more confident deeper in the network"
+            ))
+            .font(.caption2).foregroundStyle(.secondary)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+                    LensTableHeader()
+                    Divider()
+                    ForEach(Array(store.currentLens.enumerated()), id: \.element.layerIndex) { idx, readout in
+                        LensTableRow(readout: readout, rowIndex: idx, animPhase: lensAnimPhase)
+                        if idx < store.currentLens.count - 1 {
+                            Divider().opacity(0.35)
                         }
                     }
                 }
+                .id(lensAnimPhase)
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
+            .animation(.easeOut(duration: 0.4), value: lensAnimPhase)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .card()
+        .onChange(of: store.selectedInput?.id) { _, _ in
+            withAnimation(.easeOut(duration: 0.35)) { lensAnimPhase += 1 }
+        }
     }
 
     // MARK: Attribution graph
@@ -168,6 +196,30 @@ struct TraceView: View {
                          tint: c.value >= 0 ? Theme.signal : Theme.critical)
                 Text(c.label).font(.caption2).foregroundStyle(.secondary)
                     .padding(.leading, 100).padding(.top, -4)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card()
+    }
+
+    // MARK: Attention patterns (Interp)
+
+    private var attentionCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(store.t("Attention patterns", "What each layer focuses on")).font(.headline)
+            Text(store.t("post-softmax weights — row i attends to column j; rows sum to 1",
+                         "how much each step looks back at earlier positions; each row adds up to 100%"))
+                .font(.caption2).foregroundStyle(.secondary)
+
+            let cols = [GridItem(.flexible()), GridItem(.flexible())]
+            LazyVGrid(columns: cols, alignment: .leading, spacing: 14) {
+                ForEach(store.currentAttentionPatterns) { pat in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("L\(pat.layerIndex) · H\(pat.headIndex)")
+                            .font(.caption2.monospaced()).foregroundStyle(.secondary)
+                        AttentionHeatmap(pattern: pat)
+                    }
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -197,5 +249,85 @@ struct TraceView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .card()
+    }
+}
+
+// MARK: - Logit lens table helpers
+
+private struct LensTableHeader: View {
+    var body: some View {
+        HStack(spacing: 4) {
+            Text("Layer")
+                .frame(width: 82, alignment: .leading)
+            ForEach(1...5, id: \.self) { rank in
+                Text("#\(rank)")
+                    .frame(width: 84, alignment: .center)
+            }
+        }
+        .font(.caption2.bold())
+        .foregroundStyle(.secondary)
+        .padding(.vertical, 6)
+        .padding(.horizontal, 6)
+    }
+}
+
+private struct LensTableRow: View {
+    let readout: LayerReadout
+    let rowIndex: Int
+    let animPhase: Int
+
+    private var top5: [(token: String, prob: Double)] {
+        readout.probabilities
+            .sorted { $0.value > $1.value }
+            .prefix(5)
+            .map { (token: $0.key, prob: $0.value) }
+    }
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Text(readout.name)
+                .font(.caption.monospaced())
+                .foregroundStyle(.secondary)
+                .frame(width: 82, alignment: .leading)
+            ForEach(Array(top5.enumerated()), id: \.offset) { _, entry in
+                LensTokenCell(token: entry.token, prob: entry.prob,
+                              isTop: entry.token == readout.top)
+            }
+        }
+        .padding(.vertical, 6)
+        .padding(.horizontal, 6)
+        .animation(
+            .easeOut(duration: 0.3).delay(Double(rowIndex) * 0.06),
+            value: animPhase
+        )
+    }
+}
+
+private struct LensTokenCell: View {
+    let token: String
+    let prob: Double
+    let isTop: Bool
+
+    var body: some View {
+        VStack(spacing: 2) {
+            Text(token)
+                .font(.caption.monospaced())
+                .fontWeight(isTop ? .semibold : .regular)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            Text(String(format: "%.0f%%", prob * 100))
+                .font(.system(size: 9).monospaced())
+                .foregroundStyle(isTop ? Theme.signal.opacity(0.85) : .secondary)
+        }
+        .padding(.vertical, 5)
+        .padding(.horizontal, 6)
+        .frame(width: 84)
+        .background(
+            isTop
+                ? Theme.heat(prob)
+                : Color.primary.opacity(0.06 + 0.18 * prob),
+            in: RoundedRectangle(cornerRadius: Theme.cellCorner)
+        )
+        .foregroundStyle(isTop ? Theme.signal : .primary)
     }
 }

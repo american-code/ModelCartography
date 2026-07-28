@@ -190,6 +190,41 @@ public struct AttributionGraph: Sendable {
     }
 }
 
+// MARK: - Attention patterns (Interp integration)
+
+/// Post-softmax attention weights for one head at one layer.
+/// `weights[i * seqLen + j]` is the probability mass that query position `i`
+/// places on key position `j`; rows sum to 1. Rows after `i` are 0 (causal mask).
+public struct AttentionHeadPattern: Identifiable, Sendable {
+    public let layerIndex: Int
+    public let headIndex: Int
+    public let seqLen: Int
+    public let weights: [Float]   // flat [seqLen × seqLen], row-major
+
+    public var id: String { "\(layerIndex)-\(headIndex)" }
+
+    public init(layerIndex: Int, headIndex: Int, seqLen: Int, weights: [Float]) {
+        self.layerIndex = layerIndex
+        self.headIndex = headIndex
+        self.seqLen = seqLen
+        self.weights = weights
+    }
+}
+
+// MARK: - Circuit / activation patching
+
+/// A [layers × heads] matrix of importance scores from an activation patching sweep.
+/// `scores[l][h]` is the normalized importance of head h in layer l, 0 (silent) … 1 (critical).
+public struct PatchingMatrix: Sendable {
+    public let layers: Int
+    public let heads: Int
+    /// Row-indexed: `scores[layer][head]`.
+    public let scores: [[Double]]
+    public init(layers: Int, heads: Int, scores: [[Double]]) {
+        self.layers = layers; self.heads = heads; self.scores = scores
+    }
+}
+
 // MARK: - Errors
 
 public enum CartographyError: Error, CustomStringConvertible {

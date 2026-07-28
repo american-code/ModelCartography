@@ -32,6 +32,8 @@ struct RootView: View {
                 .tabItem { Label("Intervene", systemImage: "scissors") }
             VerifyView(store: store)
                 .tabItem { Label("Verify", systemImage: "checkmark.seal") }
+            CircuitView(store: store)
+                .tabItem { Label("Circuit", systemImage: "cpu") }
         }
     }
 }
