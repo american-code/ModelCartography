@@ -198,7 +198,7 @@ struct CircuitView: View {
                 .font(.headline).foregroundStyle(Theme.trace)
             Text(store.t(
                 "Switch to the Interp GPT-2 adapter on the Cortex tab to enable the circuit sweep.",
-                "Go to the Cortex tab and tap "Interp GPT-2" to try this feature."
+                "Go to the Cortex tab and tap \"Interp GPT-2\" to try this feature."
             )).font(.caption).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
