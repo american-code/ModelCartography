@@ -1,0 +1,38 @@
+name: ModelCartography
+options:
+  bundleIdPrefix: org.americancode.cartography
+  createIntermediateGroups: true
+  deploymentTarget:
+    macOS: "14.0"
+    iOS: "17.0"
+    tvOS: "17.0"
+
+settings:
+  base:
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+
+targets:
+  ModelCartography:
+    type: application
+    # One multiplatform target -> macOS, iPad/iPhone, and Apple TV from a single codebase.
+    supportedDestinations: [macOS, iOS, tvOS]
+    deploymentTarget:
+      macOS: "14.0"
+      iOS: "17.0"
+      tvOS: "17.0"
+    sources:
+      - path: Sources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.americancode.cartography.ModelCartography
+        PRODUCT_NAME: ModelCartography
+        GENERATE_INFOPLIST_FILE: YES
+        ENABLE_PREVIEWS: YES
+        CODE_SIGN_STYLE: Automatic
+        INFOPLIST_KEY_CFBundleDisplayName: Cartography
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.developer-tools
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
