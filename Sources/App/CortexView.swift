@@ -67,7 +67,7 @@ struct CortexView: View {
                 }
                 #if os(macOS) || os(iOS)
                 HStack(spacing: 10) {
-                    Button("Toy Transformer (untrained weights)") { store.useInterpModel() }
+                    Button("Toy Transformer") { store.useInterpModel() }
                     Button("Load Core ML…") { showingImporter = true }
                     Button("Load Log…") { showingLogImporter = true }
                 }

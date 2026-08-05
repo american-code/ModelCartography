@@ -361,8 +361,13 @@ final class MapStore {
     }
 
     #if os(macOS) || os(iOS)
-    /// Load the SwiftSci Interp demo adapter (HookedGPT2 with logit lens + attention patterns).
+    /// Load the SwiftSci Interp adapter — weights are trained (or loaded from a
+    /// safetensors checkpoint) and every forward pass streams residPost activations
+    /// via ActivationStreamReceiver to Application Support/activations/.
     func useInterpModel() {
+        status = ToyTransformerTrainer.hasSavedWeights
+            ? "Loading trained toy transformer from checkpoint…"
+            : "Training toy transformer (300 steps) — first run only…"
         let a = InterpAdapter.make()
         corpus = InterpAdapter.demoCorpus()
         evalCorpus = InterpAdapter.demoCorpus()

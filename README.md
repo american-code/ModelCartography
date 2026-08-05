@@ -81,7 +81,9 @@ diagnostic — or an honest "unsupported" card — purely from what each adapter
 | Dense adapter (Phase 2) | `Sources/Adapters/DenseText/` | residual model + sparse autoencoder → features, logit lens, attribution, steering |
 | MoE adapter (Phase 3) | `Sources/Adapters/MoE/` | our own router + experts → routing cortex, expert attribution, utilization pruning |
 | Routing-log adapter | `Sources/Adapters/RoutingLog/` | imports an external MoE engine's JSON routing log → mapped, labeled cortex + verification |
-| Interp adapter | `Sources/Adapters/Interp/InterpAdapter.swift` | HookedGPT2 via SwiftSci Interp → logit lens, attention patterns, activation patching (macOS/iOS) |
+| Interp adapter | `Sources/Adapters/Interp/InterpAdapter.swift` | HookedGPT2 trained on a word corpus, saved as safetensors → logit lens, attention patterns, activation patching + live activation streaming (macOS/iOS) |
+| Toy trainer | `Sources/Adapters/Interp/ToyTransformerTrainer.swift` | 300-step SGD on Shakespeare-like word sequences; persists weights with MLX `save(arrays:url:)` / loads via `loadArrays(url:)` |
+| Activation logger | `Sources/Adapters/Interp/ActivationLogger.swift` | wires `ActivationStreamSender` → `ActivationStreamReceiver` (SwiftSci Interp); streams residPost float16 activations to disk on every forward pass |
 | Attribution | `Sources/Pipeline/Attribution.swift` | labels each region with the class it prefers |
 | Verification | `Sources/Pipeline/Verification.swift` | ablate → re-verify on held-out data + collateral detection |
 | UI | `Sources/App/` | Cortex map · Trace view · Intervene panel · Verify (health + confusion) · Attention Shift (TVD) sweep |
@@ -148,6 +150,26 @@ screens re-label themselves in plain language — "logit lens" → "how the gues
 "ablate" → "remove & recheck", "collateral damage" → "this broke something that was working" —
 so you don't need to be a research scientist to read it. The data shown is identical; only the
 words change.
+
+## Toy Transformer — trained weights + live activation streaming
+
+The **Toy Transformer** adapter (`InterpAdapter`) uses a 2-layer, 2-head GPT-2-style model over
+a 10-word vocabulary (`the`, `fox`, `cat`, …). Starting from the first launch it is **trained** —
+not random noise:
+
+1. **Training** — `ToyTransformerTrainer.train()` runs 300 vanilla-SGD steps of next-token
+   prediction on a Shakespeare-like word corpus (subject-verb-object sequences built from the toy
+   vocabulary). MLX `valueAndGrad` computes gradients end-to-end through the full transformer.
+2. **Persistence** — the resulting weights are saved as a `.safetensors` file in Application
+   Support via MLX `save(arrays:url:)`, the same call SwiftSci Interp's `LocalModelLocator`
+   (SafetensorsLoader) uses for real HuggingFace checkpoints. Subsequent launches load from disk
+   via `loadArrays(url:)` — instant, deterministic.
+3. **Activation streaming** — every `forward()` call passes the shared `ActivationLogger.registry`
+   to `HookedGPT2.callAsFunction`. The registry carries `ActivationStreamSender` hooks (from
+   SwiftSci Interp) that serialize each `residPost` tensor as float16 frames and write them over
+   a per-process Unix-domain socket to `ActivationStreamReceiver`, which flushes `.bin` + `.json`
+   sidecar files to `Application Support/activations/` at session end. Both sender and receiver
+   were implemented in SwiftSci/Interp but previously unused here.
 
 ## Phase 2 — the dense model (`Sources/Adapters/DenseText/`)
 

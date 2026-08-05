@@ -2,10 +2,27 @@
 //  InterpAdapter.swift
 //  Adapts a HookedGPT2 (SwiftSci Interp) into the universal ModelAdapter interface.
 //  Uses Interp's HookRegistry, LogitLens, and AttentionPatterns for mechanistic
-//  interpretability on a tiny demo transformer with deterministic weights.
+//  interpretability on a tiny transformer trained on a real word corpus.
 //
-//  Guarded to macOS/iOS because MLX (a transitive dependency of Interp) does not
-//  support tvOS. On tvOS the existing adapters continue to work as before.
+//  Weight lifecycle
+//  ────────────────
+//  1. On first launch: ToyTransformerTrainer.trainAndSave() runs ~300 SGD steps
+//     over the Shakespeare-like word corpus and writes the weights to
+//     Application Support as a safetensors file.
+//  2. On subsequent launches: ToyTransformerTrainer.loadTrained() reads the
+//     file via MLX loadArrays(url:) — the same call LocalModelLocator (Interp)
+//     uses for real HuggingFace checkpoints.
+//
+//  Activation streaming
+//  ────────────────────
+//  An ActivationLogger (ActivationStreamReceiver + ActivationStreamSender pair)
+//  is created alongside the model.  Every forward() call passes the logger's
+//  HookRegistry to HookedGPT2.callAsFunction, so the sender's residPost hooks
+//  stream live float16 activations to the receiver, which writes .bin + .json
+//  files to Application Support/activations/.
+//
+//  Guarded to macOS/iOS because MLX (a transitive dependency of Interp) does
+//  not support tvOS.  On tvOS the existing adapters continue to work as before.
 //
 
 #if os(macOS) || os(iOS)
@@ -30,43 +47,46 @@ public final class InterpAdapter: ModelAdapter {
     private static let dMLP    = 32
     private static let seqLen  = 8
 
-    private let model: HookedGPT2
+    private let model:  HookedGPT2
+    private let logger: ActivationLogger
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
-    private init(model: HookedGPT2) { self.model = model }
+    private init(model: HookedGPT2, logger: ActivationLogger) {
+        self.model  = model
+        self.logger = logger
+    }
 
-    /// Build a HookedGPT2 with small deterministic weights for demonstration.
+    /// Builds a trained HookedGPT2.
+    ///
+    /// - If a saved checkpoint exists (from a previous run) it is loaded via
+    ///   MLX `loadArrays(url:)` — the SafetensorsLoader pattern from Interp.
+    /// - Otherwise the model is trained for 300 SGD steps on the Shakespeare
+    ///   word corpus and the resulting weights are saved to disk.
+    ///
+    /// An ActivationLogger is started so that every subsequent forward() call
+    /// streams residPost activations to disk via ActivationStreamReceiver.
     public static func make() -> InterpAdapter {
-        let vSize = vocab.count
         let cfg = GPT2Config(
-            nLayers: nLayers, nHeads: nHeads,
-            dModel: dModel, dMLP: dMLP,
-            vocabSize: vSize, seqLen: seqLen
+            nLayers:   nLayers,
+            nHeads:    nHeads,
+            dModel:    dModel,
+            dMLP:      dMLP,
+            vocabSize: vocab.count,
+            seqLen:    seqLen
         )
-        let blocks: [GPT2BlockWeights] = (0..<nLayers).map { l in
-            GPT2BlockWeights(
-                ln1Scale: scalars(1.0, [dModel]),   ln1Bias: scalars(0.0, [dModel]),
-                wQ: seeded([dModel, dModel], seed: l * 10 + 1),
-                wK: seeded([dModel, dModel], seed: l * 10 + 2),
-                wV: seeded([dModel, dModel], seed: l * 10 + 3),
-                wO: seeded([dModel, dModel], seed: l * 10 + 4),
-                ln2Scale: scalars(1.0, [dModel]),   ln2Bias: scalars(0.0, [dModel]),
-                w1: seeded([dMLP, dModel],  seed: l * 10 + 5),
-                b1: scalars(0.0, [dMLP]),
-                w2: seeded([dModel, dMLP],  seed: l * 10 + 6),
-                b2: scalars(0.0, [dModel])
-            )
+
+        let gpt: HookedGPT2
+        if ToyTransformerTrainer.hasSavedWeights,
+           let loaded = try? ToyTransformerTrainer.loadTrained(config: cfg) {
+            gpt = loaded
+        } else {
+            gpt = ToyTransformerTrainer.trainAndSave(
+                config: cfg, vocab: vocab, steps: 300)
         }
-        let gpt = HookedGPT2(
-            config: cfg,
-            wte: seeded([vSize, dModel], seed: 0),
-            wpe: seeded([seqLen, dModel], seed: 99),
-            blocks: blocks,
-            lnFinalScale: scalars(1.0, [dModel]),
-            lnFinalBias:  scalars(0.0, [dModel])
-        )
-        return InterpAdapter(model: gpt)
+
+        let logger = ActivationLogger(nLayers: nLayers)
+        return InterpAdapter(model: gpt, logger: logger)
     }
 
     // ── Demo corpus ───────────────────────────────────────────────────────────
@@ -88,7 +108,7 @@ public final class InterpAdapter: ModelAdapter {
 
     // ── ModelAdapter ──────────────────────────────────────────────────────────
 
-    public var name: String { "Hooked GPT-2 · Interp demo (2L 2H d=16)" }
+    public var name: String { "Hooked GPT-2 · trained (2L 2H d=16)" }
 
     public var classLabels: [String] { Self.vocab }
 
@@ -126,13 +146,17 @@ public final class InterpAdapter: ModelAdapter {
         return edges
     }
 
+    /// Runs a forward pass using the shared ActivationLogger registry so that
+    /// ActivationStreamSender hooks fire and stream residPost activations to the
+    /// ActivationStreamReceiver running on a background thread.
     public func forward(_ input: CartographyInput) throws -> Trace {
         let tokens = mlxTokens(input)
-        let logits = model(tokens, registry: HookRegistry())
+        // Use logger.registry so the sender's residPost hooks capture activations.
+        let logits = model(tokens, registry: logger.registry)
         logits.eval()
 
         let lastPos = tokens.shape[0] - 1
-        let probs = softmaxRow(logits[lastPos])
+        let probs   = softmaxRow(logits[lastPos])
 
         var probDict: [String: Double] = [:]
         for (i, word) in Self.vocab.enumerated() { probDict[word] = Double(probs[i]) }
@@ -208,15 +232,11 @@ public final class InterpAdapter: ModelAdapter {
 
     // MARK: Activation patching sweep (IOI-style) via Interp.ActivationPatching
 
-    /// Sweeps Interp.ActivationPatching across every (layer, head) using the per-head
-    /// output hook (.attnHeadOut). Both prompts are padded to seqLen so that injected
-    /// activation tensors have matching shapes. The IOI spec uses the clean model's
-    /// top prediction as the "IO" token and the best corrupted-only prediction as "S".
-    public func patchingSweep(clean: CartographyInput, corrupted: CartographyInput) throws -> PatchingMatrix {
+    public func patchingSweep(clean: CartographyInput,
+                               corrupted: CartographyInput) throws -> PatchingMatrix {
         let cleanToks = mlxTokensPadded(clean)
         let corrToks  = mlxTokensPadded(corrupted)
 
-        // Determine ioTokenID (clean prediction) and sTokenID (best rival from corrupted run).
         let cleanLen = Self.tokenIDs(clean.display ?? "").count
         let corrLen  = Self.tokenIDs(corrupted.display ?? "").count
 
@@ -236,7 +256,6 @@ public final class InterpAdapter: ModelAdapter {
         let ioi = IOISpec(ioTokenID: ioTokenID, sTokenID: sTokenID,
                           targetPosition: min(cleanLen - 1, corrLen - 1))
 
-        // One batch sweep over all per-head hook points (n+2 forward passes total).
         let hookPoints: [HookPoint] = (0..<Self.nLayers).flatMap { l in
             (0..<Self.nHeads).map { h in HookPoint.attnHeadOut(layer: l, head: h) }
         }
@@ -245,7 +264,8 @@ public final class InterpAdapter: ModelAdapter {
             model: model, ioi: ioi, hookPoints: hookPoints
         )
 
-        var scores = Array(repeating: Array(repeating: 0.0, count: Self.nHeads), count: Self.nLayers)
+        var scores = Array(repeating: Array(repeating: 0.0, count: Self.nHeads),
+                           count: Self.nLayers)
         for (idx, r) in results.enumerated() {
             let l = idx / Self.nHeads
             let h = idx % Self.nHeads
@@ -258,15 +278,11 @@ public final class InterpAdapter: ModelAdapter {
 
     private func headID(_ layer: Int, _ head: Int) -> String { "L\(layer)H\(head)" }
 
-    /// Convert a CartographyInput to an MLXArray of Int32 token IDs, shape [seqLen].
     private func mlxTokens(_ input: CartographyInput) -> MLXArray {
         let ids = Self.tokenIDs(input.display ?? "")
-        let ids32 = ids.map { Int32($0) }
-        return MLXArray(ids32, [ids32.count])
+        return MLXArray(ids.map { Int32($0) }, [ids.count])
     }
 
-    /// Like mlxTokens but always pads (with token 0) to seqLen so that activation
-    /// tensors from both prompts have identical shapes for injection during patching.
     private func mlxTokensPadded(_ input: CartographyInput) -> MLXArray {
         let ids = Self.tokenIDs(input.display ?? "")
         let padded = (ids + [Int](repeating: 0, count: max(0, Self.seqLen - ids.count)))
@@ -274,41 +290,19 @@ public final class InterpAdapter: ModelAdapter {
         return MLXArray(padded.map { Int32($0) }, [padded.count])
     }
 
-    /// Tokenize whitespace-separated text into vocab indices, clamped to seqLen.
     private static func tokenIDs(_ text: String) -> [Int] {
         let words = text.lowercased().split(separator: " ").map(String.init)
         let mapped = words.prefix(seqLen).map { vocab.firstIndex(of: $0) ?? 0 }
         return Array(mapped.isEmpty ? [0] : mapped)
     }
 
-    /// Apply softmax to a 1-D MLXArray and return [Float].
     private func softmaxRow(_ arr: MLXArray) -> [Float] {
         arr.eval()
-        let raw = arr.asArray(Float.self)
+        let raw  = arr.asArray(Float.self)
         let maxV = raw.max() ?? 0
         let exps = raw.map { Foundation.exp($0 - maxV) }
         let sum  = exps.reduce(0, +)
         return exps.map { $0 / max(sum, 1e-9) }
-    }
-
-    // ── Weight initializers ───────────────────────────────────────────────────
-
-    /// All-`value` array of the given shape.
-    private static func scalars(_ value: Float, _ shape: [Int]) -> MLXArray {
-        MLXArray([Float](repeating: value, count: shape.reduce(1, *)), shape)
-    }
-
-    /// Deterministic pseudo-random weights in (−0.1, 0.1) keyed by `seed`.
-    private static func seeded(_ shape: [Int], seed: Int) -> MLXArray {
-        let n = shape.reduce(1, *)
-        var data = [Float](repeating: 0, count: n)
-        var state = UInt32(truncatingIfNeeded: seed &* 1664525 &+ 1013904223)
-        for i in data.indices {
-            state = state &* 1664525 &+ 1013904223
-            // Map to (−0.1, 0.1)
-            data[i] = (Float(state & 0xFFFF) / Float(0xFFFF) - 0.5) * 0.2
-        }
-        return MLXArray(data, shape)
     }
 }
 
