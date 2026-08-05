@@ -33,7 +33,7 @@ struct RootView: View {
             VerifyView(store: store)
                 .tabItem { Label("Verify", systemImage: "checkmark.seal") }
             CircuitView(store: store)
-                .tabItem { Label("Circuit", systemImage: "cpu") }
+                .tabItem { Label("Attention Shift (TVD)", systemImage: "cpu") }
         }
     }
 }

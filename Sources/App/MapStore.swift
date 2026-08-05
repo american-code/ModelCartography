@@ -129,6 +129,23 @@ final class MapStore {
 
     var adapterName: String { adapter.name }
     var isCircuitSupported: Bool { adapter.capabilities.contains(.activationPatching) }
+
+    /// Non-nil when the active adapter has a fixed vocabulary and the prompt pair
+    /// contains words outside it. Unknown tokens are silently mapped to index 0.
+    var circuitOOVWarning: String? {
+        #if os(macOS) || os(iOS)
+        guard adapter is InterpAdapter else { return nil }
+        let vocab = InterpAdapter.vocab
+        let oov: (String) -> [String] = { text in
+            text.lowercased().split(separator: " ").map(String.init).filter { !vocab.contains($0) }
+        }
+        let words = Array(Set(oov(circuitCleanPrompt) + oov(circuitCorruptedPrompt))).sorted()
+        guard !words.isEmpty else { return nil }
+        return "Unknown tokens (mapped to "\(vocab[0])"): \(words.joined(separator: ", "))"
+        #else
+        return nil
+        #endif
+    }
     var canAblate: Bool { adapter.capabilities.contains(.ablation) }
     var canSaliency: Bool { adapter.capabilities.contains(.saliency) }
     var canSteer: Bool { adapter.capabilities.contains(.steering) }

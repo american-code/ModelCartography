@@ -212,7 +212,12 @@ struct RegionCell: View {
             }
             .tvOSFocusRing(cornerRadius: Theme.cellCorner)
         }
+        #if os(tvOS)
+        .buttonStyle(.card)
+        .focusable()
+        #else
         .buttonStyle(.plain)
+        #endif
         .help(regionHelp)
     }
 

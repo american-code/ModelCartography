@@ -1,10 +1,10 @@
 //
 //  CircuitView.swift
-//  IOI activation patching: supply a clean/corrupted prompt pair, run the sweep,
-//  and read the [layers × heads] importance heatmap. Each cell's brightness is
-//  the total-variation distance between that head's attention distribution on the
-//  two prompts — brighter = the head changed most = critical to the behavioral
-//  difference. Tap any cell to inspect the head's attention pattern on the clean input.
+//  IOI activation patching via Interp.ActivationPatching: supply a clean/corrupted
+//  prompt pair, run the sweep, and read the [layers × heads] importance heatmap.
+//  Each cell's brightness is the normalizedPatchingScore for that head — how much
+//  injecting the corrupted head activation shifts the IOI logit diff. Brighter =
+//  that head is more critical to the behavioral difference between the two prompts.
 //
 
 import SwiftUI
@@ -15,7 +15,7 @@ struct CircuitView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                PageHeader(store: store, title: "Circuit",
+                PageHeader(store: store, title: "Attention Shift (TVD)",
                            expertSubtitle: "Activation patching sweep: which heads are critical to the circuit?",
                            plainSubtitle: "Find which attention heads change most between two sentences.")
 
@@ -58,6 +58,12 @@ struct CircuitView: View {
                 LabeledTextField(label: store.t("Corrupted", "Changed version"),
                                  placeholder: "the lazy dog sat",
                                  text: $store.circuitCorruptedPrompt)
+            }
+
+            if let oov = store.circuitOOVWarning {
+                Label(oov, systemImage: "exclamationmark.triangle")
+                    .font(.caption2)
+                    .foregroundStyle(Theme.trace)
             }
 
             Button { store.runPatchingSweep() } label: {
@@ -228,7 +234,12 @@ struct CircuitCell: View {
             )
             .tvOSFocusRing(cornerRadius: Theme.cellCorner)
         }
+        #if os(tvOS)
+        .buttonStyle(.card)
+        .focusable()
+        #else
         .buttonStyle(.plain)
+        #endif
         .help(String(format: "Importance: %.3f", score))
     }
 }

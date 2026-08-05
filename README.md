@@ -27,7 +27,7 @@ and the optimizer once; add a new architecture by writing one adapter.
 flowchart TB
     subgraph UI["UI — written once (SwiftUI, macOS · iPadOS · tvOS)"]
         direction LR
-        C[Cortex] --- T[Trace] --- I[Intervene] --- V[Verify] --- CI[Circuit]
+        C[Cortex] --- T[Trace] --- I[Intervene] --- V[Verify] --- CI[Attention Shift]
     end
     UI --> STORE["MapStore<br/>observable state"]
     STORE --> PIPE
@@ -84,7 +84,7 @@ diagnostic — or an honest "unsupported" card — purely from what each adapter
 | Interp adapter | `Sources/Adapters/Interp/InterpAdapter.swift` | HookedGPT2 via SwiftSci Interp → logit lens, attention patterns, activation patching (macOS/iOS) |
 | Attribution | `Sources/Pipeline/Attribution.swift` | labels each region with the class it prefers |
 | Verification | `Sources/Pipeline/Verification.swift` | ablate → re-verify on held-out data + collateral detection |
-| UI | `Sources/App/` | Cortex map · Trace view · Intervene panel · Verify (health + confusion) · Circuit sweep |
+| UI | `Sources/App/` | Cortex map · Trace view · Intervene panel · Verify (health + confusion) · Attention Shift (TVD) sweep |
 
 ### Two adapters, on purpose
 
@@ -135,11 +135,13 @@ while the harness flags `horizontal` as collateral damage.
 3. **Intervene** — quick-mark a whole domain (or hand-pick neurons), then **Ablate & Re-verify**.
    The result diffs before/after accuracy per class and flags any good class you damaged.
 4. **Verify** — a report card for any model: overall + per-class accuracy and a confusion matrix.
-5. **Circuit** — supply a clean/corrupted prompt pair and tap **Run sweep**. The adapter runs an
-   IOI activation-patching sweep and renders a `[layers × heads]` importance heatmap: brighter
-   cell = larger total-variation distance between the two prompts = that head is critical to the
-   behavioral difference. Tap any cell to inspect the head's attention pattern on the clean
-   input. Requires the **Toy Transformer** adapter (macOS/iOS; not available on tvOS).
+5. **Attention Shift (TVD)** — supply a clean/corrupted prompt pair and tap **Run sweep**. The
+   adapter runs a real IOI activation-patching sweep via `Interp.ActivationPatching.sweep()`:
+   for each head it injects the corrupted activation into the clean run and measures the
+   normalized logit-diff change. The result is a `[layers × heads]` importance heatmap: brighter
+   cell = that head contributes more to the behavioral difference. An OOV warning appears if any
+   token in your prompt is outside the toy vocabulary. Tap any cell to inspect the head's
+   attention pattern on the clean input. Requires the **Toy Transformer** adapter (macOS/iOS).
 
 **Simplify toggle.** Every tab has a **Simplify** button (top-right). Turn it on and the same
 screens re-label themselves in plain language — "logit lens" → "how the guess takes shape",
@@ -235,18 +237,23 @@ it to full **vocabulary-level token predictions**.
 **Attention patterns** also appear in Trace: for each layer × head, a post-softmax weight grid
 shows which positions the head attends to on the selected input.
 
-### Circuit — activation patching sweep
+### Attention Shift (TVD) — activation patching sweep
 
-![Circuit — activation patching sweep](docs/circuit-view.svg)
+![Attention Shift — activation patching sweep](docs/circuit-view.svg)
 
-The **Circuit** tab implements the IOI (Indirect Object Identification) patching protocol:
+The **Attention Shift (TVD)** tab implements the IOI (Indirect Object Identification) patching
+protocol via `Interp.ActivationPatching.sweep()`:
 
 1. Enter a **clean** and a **corrupted** prompt (e.g. `"the quick fox jumped"` vs `"the lazy dog sat"`).
-2. Tap **Run sweep** — the adapter runs forward passes with each head's activations patched from
-   the corrupted run into the clean run (via `Interp.AttentionPatterns` + `HookRegistry`).
+   An **OOV warning** appears in amber if any token is outside the 10-word toy vocabulary
+   (unknown tokens are silently mapped to index 0, i.e. "the").
+2. Tap **Run sweep** — the adapter runs `n+2` forward passes: one clean baseline, one corrupted
+   capture (all per-head activations captured via `HookPoint.attnHeadOut`), then one clean+patch
+   pass per head. `IOISpec` is derived from the clean vs corrupted model predictions.
 3. The result is a `[layers × heads]` importance matrix: each cell's brightness is the
-   total-variation distance between that head's attention distribution on the two prompts.
-   **Brighter = the head changed most = it is critical to the behavioral difference.**
+   **normalizedPatchingScore** — what fraction of the clean→corrupted logit-diff change is
+   attributable to patching that head. **Brighter = that head is more critical to the behavioral
+   difference.**
 4. Tap any cell to expand the **head detail card**: a post-softmax attention heatmap on the
    clean prompt (rows = query positions, columns = key positions, rows sum to 1).
 

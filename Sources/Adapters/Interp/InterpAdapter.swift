@@ -206,40 +206,50 @@ public final class InterpAdapter: ModelAdapter {
         return out
     }
 
-    // MARK: Activation patching sweep (IOI-style)
+    // MARK: Activation patching sweep (IOI-style) via Interp.ActivationPatching
 
-    /// For each (layer, head), computes the total-variation distance between the clean and
-    /// corrupted attention distributions, then normalizes to 0…1. Heads with high TVD shifted
-    /// most between the two prompts and are the circuit's critical nodes.
+    /// Sweeps Interp.ActivationPatching across every (layer, head) using the per-head
+    /// output hook (.attnHeadOut). Both prompts are padded to seqLen so that injected
+    /// activation tensors have matching shapes. The IOI spec uses the clean model's
+    /// top prediction as the "IO" token and the best corrupted-only prediction as "S".
     public func patchingSweep(clean: CartographyInput, corrupted: CartographyInput) throws -> PatchingMatrix {
-        let cleanPats     = try attentionPatterns(clean)
-        let corruptedPats = try attentionPatterns(corrupted)
+        let cleanToks = mlxTokensPadded(clean)
+        let corrToks  = mlxTokensPadded(corrupted)
 
-        var scores   = Array(repeating: Array(repeating: 0.0, count: Self.nHeads), count: Self.nLayers)
-        var maxScore = 0.0
+        // Determine ioTokenID (clean prediction) and sTokenID (best rival from corrupted run).
+        let cleanLen = Self.tokenIDs(clean.display ?? "").count
+        let corrLen  = Self.tokenIDs(corrupted.display ?? "").count
 
-        for l in 0..<Self.nLayers {
-            for h in 0..<Self.nHeads {
-                guard
-                    let cp = cleanPats.first(where: { $0.layerIndex == l && $0.headIndex == h }),
-                    let kp = corruptedPats.first(where: { $0.layerIndex == l && $0.headIndex == h })
-                else { continue }
-                let sLen = min(cp.seqLen, kp.seqLen)
-                var tvd  = 0.0
-                for row in 0..<sLen {
-                    for col in 0..<sLen {
-                        tvd += abs(Double(cp.weights[row * cp.seqLen + col]) -
-                                   Double(kp.weights[row * kp.seqLen + col]))
-                    }
-                }
-                let score = sLen > 0 ? tvd / Double(sLen) : 0
-                scores[l][h] = score
-                maxScore = max(maxScore, score)
-            }
+        let cleanLogits = model(cleanToks, registry: HookRegistry())
+        cleanLogits.eval()
+        let cleanProbs = softmaxRow(cleanLogits[cleanLen - 1])
+        let ioTokenID  = cleanProbs.indices.max(by: { cleanProbs[$0] < cleanProbs[$1] }) ?? 0
+
+        let corrLogits = model(corrToks, registry: HookRegistry())
+        corrLogits.eval()
+        let corrProbs = softmaxRow(corrLogits[corrLen - 1])
+        let sTokenID  = corrProbs.indices
+            .sorted { corrProbs[$0] > corrProbs[$1] }
+            .first(where: { $0 != ioTokenID })
+            ?? ((ioTokenID + 1) % Self.vocab.count)
+
+        let ioi = IOISpec(ioTokenID: ioTokenID, sTokenID: sTokenID,
+                          targetPosition: min(cleanLen - 1, corrLen - 1))
+
+        // One batch sweep over all per-head hook points (n+2 forward passes total).
+        let hookPoints: [HookPoint] = (0..<Self.nLayers).flatMap { l in
+            (0..<Self.nHeads).map { h in HookPoint.attnHeadOut(layer: l, head: h) }
         }
+        let results = Interp.ActivationPatching.sweep(
+            clean: cleanToks, corrupted: corrToks,
+            model: model, ioi: ioi, hookPoints: hookPoints
+        )
 
-        if maxScore > 0 {
-            for l in scores.indices { for h in scores[l].indices { scores[l][h] /= maxScore } }
+        var scores = Array(repeating: Array(repeating: 0.0, count: Self.nHeads), count: Self.nLayers)
+        for (idx, r) in results.enumerated() {
+            let l = idx / Self.nHeads
+            let h = idx % Self.nHeads
+            scores[l][h] = Double(max(0, min(1, r.normalizedPatchingScore)))
         }
         return PatchingMatrix(layers: Self.nLayers, heads: Self.nHeads, scores: scores)
     }
@@ -253,6 +263,15 @@ public final class InterpAdapter: ModelAdapter {
         let ids = Self.tokenIDs(input.display ?? "")
         let ids32 = ids.map { Int32($0) }
         return MLXArray(ids32, [ids32.count])
+    }
+
+    /// Like mlxTokens but always pads (with token 0) to seqLen so that activation
+    /// tensors from both prompts have identical shapes for injection during patching.
+    private func mlxTokensPadded(_ input: CartographyInput) -> MLXArray {
+        let ids = Self.tokenIDs(input.display ?? "")
+        let padded = (ids + [Int](repeating: 0, count: max(0, Self.seqLen - ids.count)))
+            .prefix(Self.seqLen)
+        return MLXArray(padded.map { Int32($0) }, [padded.count])
     }
 
     /// Tokenize whitespace-separated text into vocab indices, clamped to seqLen.
