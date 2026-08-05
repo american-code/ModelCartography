@@ -10,7 +10,34 @@ extension View {
         self.padding(16)
             .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14))
     }
+
+    /// Adds a yellow focus ring when the enclosing Button is focused on tvOS.
+    /// Uses @Environment(\.isFocused) which the focus engine sets on tvOS.
+    func tvOSFocusRing(cornerRadius: CGFloat = 6) -> some View {
+        #if os(tvOS)
+        self.modifier(TVOSFocusRingModifier(cornerRadius: cornerRadius))
+        #else
+        self
+        #endif
+    }
 }
+
+#if os(tvOS)
+private struct TVOSFocusRingModifier: ViewModifier {
+    @Environment(\.isFocused) private var isFocused
+    let cornerRadius: CGFloat
+
+    func body(content: Content) -> some View {
+        content
+            .scaleEffect(isFocused ? 1.08 : 1.0)
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .strokeBorder(isFocused ? Color.yellow : Color.clear, lineWidth: 3)
+            )
+            .animation(.spring(response: 0.2, dampingFraction: 0.75), value: isFocused)
+    }
+}
+#endif
 
 /// A grayscale grid rendered as a tiny image, with an optional amber saliency overlay.
 struct GridThumbnail: View {

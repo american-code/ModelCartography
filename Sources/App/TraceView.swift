@@ -68,8 +68,10 @@ struct TraceView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 12) {
                 ForEach(store.corpus) { input in
-                    Button { store.select(input) } label: { pickerLabel(input) }
-                        .buttonStyle(.plain)
+                    Button { store.select(input) } label: {
+                        pickerLabel(input).tvOSFocusRing(cornerRadius: 8)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
             .padding(.vertical, 4)

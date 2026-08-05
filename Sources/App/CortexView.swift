@@ -210,6 +210,7 @@ struct RegionCell: View {
                     Circle().fill(Theme.trace).frame(width: 5, height: 5).padding(3)
                 }
             }
+            .tvOSFocusRing(cornerRadius: Theme.cellCorner)
         }
         .buttonStyle(.plain)
         .help(regionHelp)

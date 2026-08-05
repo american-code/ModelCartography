@@ -226,6 +226,7 @@ struct CircuitCell: View {
                 RoundedRectangle(cornerRadius: Theme.cellCorner)
                     .stroke(isSelected ? Theme.signal : Color.clear, lineWidth: 2)
             )
+            .tvOSFocusRing(cornerRadius: Theme.cellCorner)
         }
         .buttonStyle(.plain)
         .help(String(format: "Importance: %.3f", score))
