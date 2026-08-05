@@ -197,8 +197,8 @@ struct CircuitView: View {
                   systemImage: "exclamationmark.triangle")
                 .font(.headline).foregroundStyle(Theme.trace)
             Text(store.t(
-                "Switch to the Interp GPT-2 adapter on the Cortex tab to enable the circuit sweep.",
-                "Go to the Cortex tab and tap \"Interp GPT-2\" to try this feature."
+                "Switch to the Toy Transformer adapter on the Cortex tab to enable the circuit sweep.",
+                "Go to the Cortex tab and tap \"Toy Transformer (untrained weights)\" to try this feature."
             )).font(.caption).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -243,7 +243,9 @@ struct LabeledTextField: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label).font(.caption.bold())
             TextField(placeholder, text: $text)
+                #if !os(tvOS)
                 .textFieldStyle(.roundedBorder)
+                #endif
                 .font(.callout)
         }
         .frame(maxWidth: .infinity)

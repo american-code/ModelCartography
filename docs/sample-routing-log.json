@@ -6,7 +6,7 @@
   ],
   "experts" : 6,
   "layers" : 2,
-  "model" : "external-moe",
+  "model" : "demo-moe",
   "records" : [
     {
       "display" : "sunny snow thunder cloud forecast sunny",

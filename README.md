@@ -44,7 +44,7 @@ flowchart TB
     IFACE --> A3["Dense + SAE<br/>features · lens · steer"]
     IFACE --> A4["MoE<br/>routing · prune"]
     IFACE --> A5["Routing Log<br/>import · read-only"]
-    IFACE --> A6["Interp GPT-2<br/>logit lens · circuits"]
+    IFACE --> A6["Toy Transformer<br/>logit lens · circuits"]
 ```
 
 Everything above the interface is architecture-agnostic; everything below it is one small,
@@ -53,7 +53,7 @@ is the whole design: get it right and each new model is an addition, not a rewri
 
 ### Capabilities by adapter
 
-| Capability | Core ML | MockNet | Dense+SAE | MoE | Routing Log | Interp GPT-2 |
+| Capability | Core ML | MockNet | Dense+SAE | MoE | Routing Log | Toy Transformer |
 |---|:--:|:--:|:--:|:--:|:--:|:--:|
 | internal activations | | ✓ | ✓ | ✓ | ✓ | ✓ |
 | saliency | ✓ | ✓ | | | | |
@@ -139,7 +139,7 @@ while the harness flags `horizontal` as collateral damage.
    IOI activation-patching sweep and renders a `[layers × heads]` importance heatmap: brighter
    cell = larger total-variation distance between the two prompts = that head is critical to the
    behavioral difference. Tap any cell to inspect the head's attention pattern on the clean
-   input. Requires the **Interp GPT-2** adapter (macOS/iOS; not available on tvOS).
+   input. Requires the **Toy Transformer** adapter (macOS/iOS; not available on tvOS).
 
 **Simplify toggle.** Every tab has a **Simplify** button (top-right). Turn it on and the same
 screens re-label themselves in plain language — "logit lens" → "how the guess takes shape",

@@ -9,7 +9,7 @@
 //
 //  Example:
 //  {
-//    "model": "external-moe",
+//    "model": "demo-moe",
 //    "classes": ["weather","finance","food"],
 //    "layers": 2, "experts": 6,
 //    "records": [

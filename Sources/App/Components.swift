@@ -108,6 +108,7 @@ struct PageHeader: View {
                 Spacer()
                 SimplifyToggle(store: store)
             }
+            Chip(text: "Demo data — generated in-app", tint: .gray)
             if let sub = store.simplified ? plainSubtitle : expertSubtitle {
                 Text(sub).foregroundStyle(.secondary)
             }

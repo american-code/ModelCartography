@@ -67,7 +67,7 @@ public final class RoutingLogAdapter: ModelAdapter {
                              classes: TopicDataset.topics, seed: 4)
         MoETrainer.train(model, corpus: TopicDataset.corpus(perTopic: 40, seed: 2))
         let corpus = TopicDataset.corpus(perTopic: 24, seed: 202)
-        let log = RoutingLogExporter.export(model: model, name: "external-moe", corpus: corpus)
+        let log = RoutingLogExporter.export(model: model, name: "demo-moe", corpus: corpus)
         // Prove the JSON path: encode then decode before adapting.
         let roundTripped = (try? RoutingLog.decoded(from: try log.encoded())) ?? log
         return RoutingLogAdapter(log: roundTripped)
