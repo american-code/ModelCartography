@@ -9,7 +9,7 @@ This repository implements a complete, self-contained interpretability design: t
 (Instrument → Capture → Attribute → Map → Intervene), Map B (interpretable features), logit
 lens, attribution, steering, a native Mixture-of-Experts model with router-driven expert
 pruning, and an importer for an external engine's routing log — all behind **one adapter
-interface** spanning five very different model types without a rewrite.
+interface** spanning six very different model types without a rewrite.
 
 ---
 
@@ -138,7 +138,7 @@ while the harness flags `horizontal` as collateral damage.
    The result diffs before/after accuracy per class and flags any good class you damaged.
 4. **Verify** — a report card for any model: overall + per-class accuracy and a confusion matrix.
 5. **Attention Shift (TVD)** — supply a clean/corrupted prompt pair and tap **Run sweep**. The
-   adapter runs a real IOI activation-patching sweep via `Interp.ActivationPatching.sweep()`:
+   adapter runs a real activation-patching sweep via `Interp.ActivationPatching.sweep()`:
    for each head it injects the corrupted activation into the clean run and measures the
    normalized logit-diff change. The result is a `[layers × heads]` importance heatmap: brighter
    cell = that head contributes more to the behavioral difference. An OOV warning appears if any
@@ -263,8 +263,15 @@ shows which positions the head attends to on the selected input.
 
 ![Attention Shift — activation patching sweep](docs/circuit-view.svg)
 
-The **Attention Shift (TVD)** tab implements the IOI (Indirect Object Identification) patching
-protocol via `Interp.ActivationPatching.sweep()`:
+The **Attention Shift (TVD)** tab implements an activation-patching sweep scored by logit
+difference. It is patterned on the IOI (Indirect Object Identification) methodology, but it is
+**not** the IOI task: this model's vocabulary is ten tokens (`the, fox, cat, dog, bird, jumped,
+sat, flew, quick, lazy`) and contains no names, so there is no indirect object to identify.
+The two tokens whose logit difference is measured are chosen automatically — `ioTokenID` is the
+argmax of the clean prompt's final position, and `sTokenID` is the highest-probability
+*different* token from the corrupted prompt.
+
+The sweep itself runs via `Interp.ActivationPatching.sweep()`:
 
 1. Enter a **clean** and a **corrupted** prompt (e.g. `"the quick fox jumped"` vs `"the lazy dog sat"`).
    An **OOV warning** appears in amber if any token is outside the 10-word toy vocabulary
