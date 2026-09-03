@@ -7,3 +7,20 @@ by the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
 
 For commercial licensing inquiries: jmelton@americancode.org
+
+--------------------------------------------------------------------------------
+THIRD-PARTY COMPONENTS
+--------------------------------------------------------------------------------
+
+This product includes the following third-party software. Each component remains
+under its own license; the terms below apply to those components, not to
+ModelCartography itself.
+
+SwiftSci Interp
+  Apache License 2.0
+  Provides the toy-transformer training, logit lens and activation-patching
+  implementations used by the Interp adapter.
+
+mlx-swift (>= 0.31.0, via SwiftSci Interp)
+  https://github.com/ml-explore/mlx-swift
+  MIT License, Copyright (c) 2023 ml-explore
