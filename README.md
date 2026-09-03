@@ -316,3 +316,24 @@ Commercial use of this software requires a separate commercial license. Contact 
 For commercial licensing inquiries, please contact: **jmelton@americancode.org**
 
 Copyright (C) 2026 American Code.
+
+### Dual licensing and App Store distribution
+
+This project is offered under **two** licenses, at your option:
+
+1. **AGPL-3.0-or-later** — the terms in `LICENSE`. Use, modify and redistribute
+   freely, provided derivative works and network-served modifications are made
+   available under the same terms.
+2. **A commercial license** — for anyone who cannot accept the AGPL's copyleft
+   or source-disclosure obligations. Contact jmelton@americancode.org.
+
+Binaries distributed through the Apple App Store are released under the
+commercial license, **not** the AGPL. This is deliberate: Apple's terms of
+service impose usage and device restrictions that the GPL family forbids adding
+to a covered work, so an AGPL binary cannot be distributed there. As sole
+copyright holder, American Code can and does license the App Store build
+separately. Every third-party component this project depends on is MIT,
+Apache-2.0 or BSD-3-Clause (see `NOTICE`), so none of them restricts that.
+
+Nothing here changes your rights to the source in this repository, which remain
+AGPL-3.0-or-later.
