@@ -61,7 +61,27 @@ public struct RoutingLog: Codable, Sendable {
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]
         return try enc.encode(self)
     }
+
+    /// `layers`/`experts` size two nested loops in `RoutingLogAdapter.regions()`/`forward(_:)`
+    /// (`0..<log.layers`, `0..<log.experts`) with no bound of their own — a negative value
+    /// traps forming the range (SIGTRAP, exit 133) and an absurdly large one allocates a
+    /// `Region` per layer×expert pair until the process is OOM-killed (exit 137). Both are
+    /// reachable from a user-supplied file via "Load Log…", so decode is where this is caught.
+    private static let maxLayersOrExperts = 100_000
+    private static let maxRegionCount = 1_000_000
+
     public static func decoded(from data: Data) throws -> RoutingLog {
-        try JSONDecoder().decode(RoutingLog.self, from: data)
+        let log = try JSONDecoder().decode(RoutingLog.self, from: data)
+        guard log.layers >= 0, log.experts >= 0 else {
+            throw CartographyError.badInput("layers and experts must not be negative (got \(log.layers), \(log.experts))")
+        }
+        guard log.layers <= maxLayersOrExperts, log.experts <= maxLayersOrExperts else {
+            throw CartographyError.badInput("layers/experts exceed the supported maximum of \(maxLayersOrExperts) (got \(log.layers), \(log.experts))")
+        }
+        let (regionCount, overflowed) = log.layers.multipliedReportingOverflow(by: log.experts)
+        guard !overflowed, regionCount <= maxRegionCount else {
+            throw CartographyError.badInput("layers \(log.layers) × experts \(log.experts) would allocate too many regions")
+        }
+        return log
     }
 }
