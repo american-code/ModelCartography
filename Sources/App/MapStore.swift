@@ -141,7 +141,7 @@ final class MapStore {
         }
         let words = Array(Set(oov(circuitCleanPrompt) + oov(circuitCorruptedPrompt))).sorted()
         guard !words.isEmpty else { return nil }
-        return "Unknown tokens (mapped to "\(vocab[0])"): \(words.joined(separator: ", "))"
+        return "Unknown tokens (mapped to \"\(vocab[0])\"): \(words.joined(separator: ", "))"
         #else
         return nil
         #endif
