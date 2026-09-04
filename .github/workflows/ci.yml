@@ -1,0 +1,30 @@
+name: CI
+
+# A full build (or even a full typecheck) can't run here: this app depends on SwiftSci
+# Interp via a local `path:` package reference (see the README's Build & run section), and
+# MapStore.swift itself — not just the Interp adapter files — references types the Interp
+# package defines, so there's no clean subset of the tree that typechecks without it. It
+# isn't published, so a generic CI runner has no way to fetch it. Documented honestly rather
+# than faked with a build step that would just fail forever, or a typecheck scoped by
+# excluding files in a way that only hides the same missing-dependency error one level up.
+#
+# What this job DOES catch: project.yml failing to even generate a valid Xcode project — a
+# malformed manifest, a missing source path, a target referencing a package that was never
+# declared. Cheap, real, and doesn't need SwiftSci.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  project-generates:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
