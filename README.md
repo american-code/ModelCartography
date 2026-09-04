@@ -111,6 +111,14 @@ open ModelCartography.xcodeproj
 
 The project file is generated from `project.yml` and git-ignored; regenerate any time.
 
+**A fresh clone will not resolve on its own.** `project.yml` depends on SwiftSci Interp via a
+local path, `../Downloads/SwiftSci/Interp` relative to this repo's own directory — it isn't
+published anywhere, so there's no submodule or package URL to fetch it from. To build, place a
+checkout of SwiftSci at `Downloads/SwiftSci` alongside wherever you cloned this repo, or edit
+the `path:` under `packages: Interp:` in `project.yml` to point at wherever you have it.
+Without it, `xcodegen generate` succeeds but the subsequent build fails at package
+resolution — this is the expected failure mode, not a bug in your setup.
+
 ### Verifying the pipeline without a full app build
 
 The core is pure Swift with no UI dependency, so the whole loop can be compiled to a CLI and
@@ -241,7 +249,8 @@ we never actually run.
 ## Circuit visualization and logit lens (`Sources/Adapters/Interp/`)
 
 The fifth tab and enhanced Trace view are powered by a **HookedGPT2** built on the
-[SwiftSci Interp](https://github.com/swiftsci/Interp) local package — a tiny 2-layer, 2-head,
+SwiftSci Interp local package (see "Build & run" above — it isn't published, so this isn't a
+link) — a tiny 2-layer, 2-head,
 d=16 transformer with a 10-word vocabulary and deterministic weights, designed to make every
 internal operation inspectable.
 
