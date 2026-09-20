@@ -16,7 +16,7 @@ settings:
 
 packages:
   Interp:
-    path: ../Downloads/SwiftSci/Interp
+    path: ../SwiftSci/Interp
 
 targets:
   ModelCartography:

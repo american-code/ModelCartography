@@ -112,9 +112,9 @@ open ModelCartography.xcodeproj
 The project file is generated from `project.yml` and git-ignored; regenerate any time.
 
 **A fresh clone will not resolve on its own.** `project.yml` depends on SwiftSci Interp via a
-local path, `../Downloads/SwiftSci/Interp` relative to this repo's own directory — it isn't
+local path, `../SwiftSci/Interp` relative to this repo's own directory — it isn't
 published anywhere, so there's no submodule or package URL to fetch it from. To build, place a
-checkout of SwiftSci at `Downloads/SwiftSci` alongside wherever you cloned this repo, or edit
+checkout of SwiftSci at `SwiftSci` alongside wherever you cloned this repo, or edit
 the `path:` under `packages: Interp:` in `project.yml` to point at wherever you have it.
 Without it, `xcodegen generate` succeeds but the subsequent build fails at package
 resolution — this is the expected failure mode, not a bug in your setup.
